@@ -1,0 +1,27 @@
+.{
+    .name = .fmetrics,
+    .version = "0.0.1",
+    .dependencies = .{
+        .spng = .{
+            .url = "git+https://github.com/allyourcodebase/libspng.git#8858232bde47083739c3e25f676093423610ec5e",
+            .hash = "spng-0.0.1-T166cP8UAABcBGTOPKx7kUUyHEcu0eDvN8LnSIj3S_cW",
+        },
+        .simpleimgio = .{
+            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#3fda94949e8d50a40e33624f020f56389a7fea29",
+            .hash = "simpleimgio-0.0.0-oHTuOenAAABfY2zCM_z9Q1u_MyuhO08PEi84TIcWNqag",
+        },
+        .fcvvdp = .{
+            .url = "git+https://github.com/halidecx/fcvvdp.git#aaf1f57a9c57f41fd8955c66460b46b5c71a3f31",
+            .hash = "fcvvdp-0.3.1-DualWH-mBACi9n4HEWDY1NKaOMl6Pceptllt3X0jcFZY",
+        },
+    },
+    .fingerprint = 0xcc4003cccc882e16,
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}

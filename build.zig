@@ -70,6 +70,7 @@ pub fn build(b: *std.Build) void {
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
         "src/iwssim/iwssim.c",
+        "src/ssimulacra2/ssimulacra2.c",
     };
     const lib_flags = [_][]const u8{
         "-std=c23",

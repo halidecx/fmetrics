@@ -31,12 +31,15 @@ const VideoStats = struct {
 
 const Metric = enum {
     iwssim,
+    ssimu2,
     cvvdp,
 };
 
 fn parseMetric(name: []const u8) ?Metric {
     if (std.ascii.eqlIgnoreCase(name, "iwssim") or std.ascii.eqlIgnoreCase(name, "iw-ssim"))
         return .iwssim;
+    if (std.ascii.eqlIgnoreCase(name, "ssimu2") or std.ascii.eqlIgnoreCase(name, "ssimulacra2"))
+        return .ssimu2;
     if (std.ascii.eqlIgnoreCase(name, "cvvdp") or std.ascii.eqlIgnoreCase(name, "jod"))
         return .cvvdp;
     return null;
@@ -123,6 +126,7 @@ fn displayModelName(model: c.FcvvdpDisplayModel) []const u8 {
 fn metricName(metric: Metric) []const u8 {
     return switch (metric) {
         .iwssim => "iwssim",
+        .ssimu2 => "ssimu2",
         .cvvdp => "cvvdp",
     };
 }
@@ -303,6 +307,7 @@ const VideoWorker = struct {
     allocator: std.mem.Allocator,
     queue: ?*VideoQueue,
     scores: *ScoreSink,
+    metric: Metric,
     width: usize,
     height: usize,
     ref_rgb: []u8,
@@ -313,6 +318,7 @@ const VideoWorker = struct {
         allocator: std.mem.Allocator,
         queue: ?*VideoQueue,
         scores: *ScoreSink,
+        metric: Metric,
         width: usize,
         height: usize,
     ) !VideoWorker {
@@ -321,6 +327,7 @@ const VideoWorker = struct {
             .allocator = allocator,
             .queue = queue,
             .scores = scores,
+            .metric = metric,
             .width = width,
             .height = height,
             .ref_rgb = try allocator.alloc(u8, pixels * 3),
@@ -356,10 +363,14 @@ const VideoWorker = struct {
         };
 
         var result: f64 = undefined;
-        const err = c.fmetrics_iwssim_cmp(&ref, &dis, &result);
+        const err = switch (self.metric) {
+            .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
+            .ssimu2 => c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
+            .cvvdp => unreachable,
+        };
         if (err != c.FMETRICS_OK) {
-            print("Error: IW-SSIM frame processing failed: {s}\n", .{c.fmetrics_error_str(err)});
-            return error.IWSSIMError;
+            print("Error: {s} frame processing failed: {s}\n", .{ metricName(self.metric), c.fmetrics_error_str(err) });
+            return error.MetricError;
         }
 
         try self.scores.append(self.allocator, result);
@@ -534,10 +545,12 @@ fn printUsage(metric: ?Metric) void {
         print("compare two images/videos using the {s} perceptual quality metric\n\n", .{metricName(m)});
         print("options:\n", .{});
         switch (m) {
-            .iwssim => {
+            .iwssim, .ssimu2 => {
                 print(
                     \\  -t, --threads u8
                     \\      task/frame thread count; default 0 (auto)
+                    \\  --err-map <out.pam|out.tga>
+                    \\      save SSIMULACRA2 error map for image inputs
                     \\  -v, --verbose
                     \\      show verbose output
                     \\  -j, --json
@@ -572,6 +585,7 @@ fn printUsage(metric: ?Metric) void {
         \\
         \\metrics:
         \\  iwssim
+        \\  ssimu2
         \\  cvvdp
         \\
         \\run `fmetrics <metric> --help` for metric-specific options
@@ -600,6 +614,67 @@ fn loadImage(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !imgio.
     defer decoded.deinit(allocator);
 
     return decoded.to8Bit(allocator);
+}
+
+fn writeErrorMapPAM(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {
+    const pixels = try std.math.mul(usize, width, height);
+    if (data.len < pixels) return error.InvalidErrorMap;
+
+    var file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
+
+    var header_buf: [256]u8 = undefined;
+    const header = try std.fmt.bufPrint(
+        &header_buf,
+        "P7\nWIDTH {d}\nHEIGHT {d}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
+        .{ width, height },
+    );
+    try file.writeStreamingAll(io, header);
+
+    const bytes = try allocator.alloc(u8, pixels * 4);
+    defer allocator.free(bytes);
+    for (data[0..pixels], 0..) |px, i| {
+        bytes[i * 4 + 0] = @truncate(px);
+        bytes[i * 4 + 1] = @truncate(px >> 8);
+        bytes[i * 4 + 2] = @truncate(px >> 16);
+        bytes[i * 4 + 3] = @truncate(px >> 24);
+    }
+    try file.writeStreamingAll(io, bytes);
+}
+
+fn writeErrorMapTGA(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {
+    const pixels = try std.math.mul(usize, width, height);
+    if (data.len < pixels) return error.InvalidErrorMap;
+    if (width > std.math.maxInt(u16) or height > std.math.maxInt(u16)) return error.InvalidErrorMap;
+
+    var file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
+
+    var header = [_]u8{0} ** 18;
+    header[2] = 2;
+    header[12] = @truncate(width);
+    header[13] = @truncate(width >> 8);
+    header[14] = @truncate(height);
+    header[15] = @truncate(height >> 8);
+    header[16] = 32;
+    header[17] = 0x28;
+    try file.writeStreamingAll(io, &header);
+
+    const bytes = try allocator.alloc(u8, pixels * 4);
+    defer allocator.free(bytes);
+    for (data[0..pixels], 0..) |px, i| {
+        bytes[i * 4 + 0] = @truncate(px >> 16);
+        bytes[i * 4 + 1] = @truncate(px >> 8);
+        bytes[i * 4 + 2] = @truncate(px);
+        bytes[i * 4 + 3] = @truncate(px >> 24);
+    }
+    try file.writeStreamingAll(io, bytes);
+}
+
+fn writeErrorMap(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {
+    if (hasExtension(path, ".tga"))
+        return writeErrorMapTGA(allocator, io, path, data, width, height);
+    return writeErrorMapPAM(allocator, io, path, data, width, height);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -631,6 +706,7 @@ pub fn main(init: std.process.Init) !void {
     var threads: c_uint = 0;
     var verbose = false;
     var json_output = false;
+    var error_map_path: ?[]const u8 = null;
 
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
@@ -640,7 +716,20 @@ pub fn main(init: std.process.Init) !void {
             verbose = true
         else if (std.mem.eql(u8, arg, "-j") or std.mem.eql(u8, arg, "--json"))
             json_output = true
-        else if (std.mem.eql(u8, arg, "-m") or std.mem.eql(u8, arg, "--model")) {
+        else if (std.mem.eql(u8, arg, "--err-map")) {
+            if (metric != .ssimu2) {
+                print("Error: --err-map is only valid for ssimu2\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+            if (args.next()) |map_arg| {
+                error_map_path = map_arg;
+            } else {
+                print("Error: Missing argument for --err-map\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+        } else if (std.mem.eql(u8, arg, "-m") or std.mem.eql(u8, arg, "--model")) {
             if (metric != .cvvdp) {
                 print("Error: --model is only valid for cvvdp\n", .{});
                 printUsage(metric);
@@ -693,6 +782,10 @@ pub fn main(init: std.process.Init) !void {
     if (ref_is_y4m != dis_is_y4m) {
         print("Error: Both inputs must be Y4M if one is\n", .{});
         return error.MismatchedInputTypes;
+    }
+    if (ref_is_y4m and error_map_path != null) {
+        print("Error: --err-map is only supported for image inputs\n", .{});
+        return error.InvalidArguments;
     }
 
     if (!ref_is_y4m) {
@@ -769,25 +862,46 @@ pub fn main(init: std.process.Init) !void {
         };
 
         var result: f64 = undefined;
-        const err = c.fmetrics_iwssim_cmp(&ref, &dis, &result);
+        var error_map: ?[]u32 = null;
+        defer if (error_map) |map| allocator.free(map);
+        if (error_map_path != null) {
+            const pixels = try std.math.mul(usize, ref_img.width, ref_img.height);
+            error_map = try allocator.alloc(u32, pixels);
+        }
+        const err = switch (metric) {
+            .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
+            .ssimu2 => if (error_map) |map|
+                c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
+            else
+                c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
+            .cvvdp => unreachable,
+        };
 
         if (err != c.FMETRICS_OK) {
-            print("Error: IW-SSIM comparison failed: {s}\n", .{c.fmetrics_error_str(err)});
-            return error.IWSSIMError;
+            print("Error: {s} comparison failed: {s}\n", .{ metricName(metric), c.fmetrics_error_str(err) });
+            return error.MetricError;
+        }
+
+        if (error_map_path) |path| {
+            if (error_map) |map| {
+                try writeErrorMap(allocator, io, path, map, ref_img.width, ref_img.height);
+                if (!json_output and verbose)
+                    print("error_map: {s}\n", .{path});
+            }
         }
 
         if (json_output) {
             print(
                 \\{{
-                \\  "iwssim": {d:.6},
+                \\  "{s}": {d:.6},
                 \\  "reference": "{s}",
                 \\  "distorted": "{s}",
                 \\  "width": {d},
                 \\  "height": {d}
                 \\}}
-            , .{ result, ref_filename.?, dis_filename.?, ref.width, ref.height });
+            , .{ metricName(metric), result, ref_filename.?, dis_filename.?, ref.width, ref.height });
         } else {
-            print("IW-SSIM: {d:.6}\n", .{result});
+            print("{s}: {d:.6}\n", .{ metricName(metric), result });
             if (verbose) {
                 print("width:   {d}\n", .{ref.width});
                 print("height:  {d}\n", .{ref.height});
@@ -911,7 +1025,7 @@ pub fn main(init: std.process.Init) !void {
     var frame_index: usize = 0;
 
     if (parallelism == 1) {
-        var worker = try VideoWorker.init(allocator, null, &score_sink, ref_dec.header.width, ref_dec.header.height);
+        var worker = try VideoWorker.init(allocator, null, &score_sink, metric, ref_dec.header.width, ref_dec.header.height);
         defer worker.deinit();
 
         while (true) {
@@ -954,9 +1068,8 @@ pub fn main(init: std.process.Init) !void {
             allocator.free(workers);
         }
 
-        while (workers_len < workers.len) : (workers_len += 1) {
-            workers[workers_len] = try VideoWorker.init(allocator, &queue, &score_sink, ref_dec.header.width, ref_dec.header.height);
-        }
+        while (workers_len < workers.len) : (workers_len += 1)
+            workers[workers_len] = try VideoWorker.init(allocator, &queue, &score_sink, metric, ref_dec.header.width, ref_dec.header.height);
 
         const spawned_count = parallelism - 1;
         var worker_threads = try allocator.alloc(std.Thread, spawned_count);
@@ -1002,7 +1115,7 @@ pub fn main(init: std.process.Init) !void {
                 .ref_frame = ref_frame_opt.?,
                 .dis_frame = dis_frame_opt.?,
             })) {
-                produce_err = error.IWSSIMError;
+                produce_err = error.MetricError;
                 break;
             }
             frame_index += 1;
@@ -1027,7 +1140,7 @@ pub fn main(init: std.process.Init) !void {
     if (json_output) {
         print(
             \\{{
-            \\  "iwssim": {d:.6},
+            \\  "{s}": {d:.6},
             \\  "quality": {d:.6},
             \\  "reference": "{s}",
             \\  "distorted": "{s}",
@@ -1035,9 +1148,9 @@ pub fn main(init: std.process.Init) !void {
             \\  "height": {d},
             \\  "frames": {d}
             \\}}
-        , .{ stats.avg, stats.avg, ref_filename.?, dis_filename.?, ref_dec.header.width, ref_dec.header.height, frame_index });
+        , .{ metricName(metric), stats.avg, stats.avg, ref_filename.?, dis_filename.?, ref_dec.header.width, ref_dec.header.height, frame_index });
     } else {
-        print("IW-SSIM: {d:.6}\n", .{stats.avg});
+        print("{s}: {d:.6}\n", .{ metricName(metric), stats.avg });
         if (verbose) {
             print("frames:  {d}\n", .{stats.frames});
             print("avg:     {d:.8}\n", .{stats.avg});

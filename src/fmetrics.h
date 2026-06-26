@@ -74,6 +74,15 @@ FmetricsErr fmetrics_iwssim_cmp(const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result);
 
+FmetricsErr fmetrics_ssimu2_cmp(const FmetricsImg *const reference,
+                                const FmetricsImg *const distorted,
+                                double *const result);
+
+FmetricsErr fmetrics_ssimu2_cmp_map(const FmetricsImg *const reference,
+                                    const FmetricsImg *const distorted,
+                                    double *const result,
+                                    uint32_t *const error_map);
+
 #ifdef __cplusplus
 }
 #endif

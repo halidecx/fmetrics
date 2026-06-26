@@ -33,6 +33,14 @@ static inline double fclip(const double v, const double min, const double max) {
     return fmin(fmax(v, min), max);
 }
 
+static inline float fclipf(const float v, const float min, const float max) {
+    return fmin(fmax(v, min), max);
+}
+
+static inline uint8_t f32_to_u8(const float v) {
+    return (uint8_t)lrintf(fclipf(v, 0.0f, 1.0f) * 255.0f);
+}
+
 static inline float flog2(const double v) {
     const union { const double d; const uint64_t x; } u = { v };
     const uint64_t mt = u.x & ((1ULL << 52) - 1);

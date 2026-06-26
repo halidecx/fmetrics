@@ -24,44 +24,6 @@
 #include "../fmetrics.h"
 #include "internal.h"
 
-static float srgb_lut[256];
-static uint32_t turbo_lut[256];
-static pthread_once_t tables_once = PTHREAD_ONCE_INIT;
-
-static uint32_t turbo_color(const float x) {
-    const float t = fclipf(x, 0.0, 1.0);
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float t4 = t2 * t2;
-    const float t5 = t3 * t2;
-    const float r = 0.13572138f + 4.61539260f * t - 42.66032258f * t2 +
-                    132.13108234f * t3 - 152.94239396f * t4 +
-                    59.28637943f * t5;
-    const float g = 0.09140261f + 2.19418839f * t + 4.84296658f * t2 -
-                    14.18503333f * t3 + 4.27729857f * t4 +
-                    2.82956604f * t5;
-    const float b = 0.10667330f + 12.64194608f * t - 60.58204836f * t2 +
-                    110.36276771f * t3 - 89.90310912f * t4 +
-                    27.34824973f * t5;
-    return (uint32_t)f32_to_u8(r) |
-           ((uint32_t)f32_to_u8(g) << 8) |
-           ((uint32_t)f32_to_u8(b) << 16) |
-           0xff000000u;
-}
-
-static void init_tables_impl(void) {
-    for (int i = 0; i < 256; i++) {
-        const float c = (float)i / 255.0f;
-        srgb_lut[i] = c <= 0.04045f ? c / 12.92f :
-            powf((c + 0.055f) / 1.055f, 2.4f);
-        turbo_lut[i] = turbo_color((float)i / 255.0f);
-    }
-}
-
-static void init_tables(void) {
-    pthread_once(&tables_once, init_tables_impl);
-}
-
 static FmetricsErr validate_image_pair(const FmetricsImg *const reference,
                                        const FmetricsImg *const distorted)
 {
@@ -110,9 +72,9 @@ static void rgb_to_planar_linear(const FmetricsImg *const src,
         const size_t out_row = (size_t)y * src->width;
         for (uint32_t x = 0; x < src->width; x++) {
             const uint8_t *restrict px = row + (size_t)x * 3u;
-            planes[0][out_row + x] = srgb_lut[px[0]];
-            planes[1][out_row + x] = srgb_lut[px[1]];
-            planes[2][out_row + x] = srgb_lut[px[2]];
+            planes[0][out_row + x] = SRGB_LUT[px[0]];
+            planes[1][out_row + x] = SRGB_LUT[px[1]];
+            planes[2][out_row + x] = SRGB_LUT[px[2]];
         }
     }
 }
@@ -431,8 +393,8 @@ static void generate_error_map(const float *restrict error_accum,
                    6.248496625763138e-05f * ssim * ssim * ssim;
             ssim = ssim > 0.0f ? 100.0f - 10.0f * powf(ssim, 0.6276336467831387f) : 100.0f;
             ssim = 1.0f - ssim / 100.0f;
-            const int value = (int)(255.0f * fclipf(ssim, 0.0f, 1.0f));
-            error_map[out_row + x] = turbo_lut[value];
+            const int value = lrint(255.0f * fclipf(ssim, 0.0f, 1.0f));
+            error_map[out_row + x] = TURBO_COLORMAP[value];
         }
     }
 }
@@ -444,8 +406,6 @@ static FmetricsErr ssimu2_compute(const FmetricsImg *const reference,
 {
     const FmetricsErr valid = validate_image_pair(reference, distorted);
     if (valid != FMETRICS_OK) return valid;
-
-    init_tables();
 
     const size_t pixels = (size_t)reference->width * reference->height;
     float *planes = malloc(pixels * 6u * sizeof(*planes));

@@ -24,6 +24,76 @@
 #include "../fmetrics.h"
 #include "internal.h"
 
+static void workspace_destroy(void *const ptr) {
+    Ssimu2Workspace *const ws = ptr;
+    if (ws == NULL) return;
+    free(ws->planes);
+    free(ws->temp);
+    free(ws->scratch);
+    free(ws);
+}
+
+static pthread_key_t workspace_key;
+static pthread_once_t workspace_key_once = PTHREAD_ONCE_INIT;
+static int workspace_key_err;
+
+static void workspace_make_key(void) {
+    workspace_key_err = pthread_key_create(&workspace_key, workspace_destroy);
+}
+
+static FmetricsErr workspace_get(Ssimu2Workspace **const out) {
+    pthread_once(&workspace_key_once, workspace_make_key);
+    if (workspace_key_err != 0) return FMETRICS_ERR_OUT_OF_MEMORY;
+    Ssimu2Workspace *ws = pthread_getspecific(workspace_key);
+    if (ws == NULL) {
+        ws = calloc(1, sizeof(*ws));
+        if (ws == NULL) return FMETRICS_ERR_OUT_OF_MEMORY;
+        if (pthread_setspecific(workspace_key, ws) != 0) {
+            free(ws);
+            return FMETRICS_ERR_OUT_OF_MEMORY;
+        }
+    }
+    *out = ws;
+    return FMETRICS_OK;
+}
+
+static FmetricsErr workspace_ensure(Ssimu2Workspace *const ws,
+                                    const uint32_t width,
+                                    const uint32_t height)
+{
+    if (ws->planes != NULL && ws->width == width && ws->height == height)
+        return FMETRICS_OK;
+
+    free(ws->planes);
+    free(ws->temp);
+    free(ws->scratch);
+    ws->planes = NULL;
+    ws->temp = NULL;
+    ws->scratch = NULL;
+    ws->width = 0;
+    ws->height = 0;
+    ws->pixels = 0;
+
+    const size_t pixels = (size_t)width * height;
+    ws->planes = malloc(pixels * 6u * sizeof(*ws->planes));
+    ws->temp = malloc(pixels * 20u * sizeof(*ws->temp));
+    ws->scratch = malloc(width * sizeof(*ws->scratch));
+    if (ws->planes == NULL || ws->temp == NULL || ws->scratch == NULL) {
+        free(ws->planes);
+        free(ws->temp);
+        free(ws->scratch);
+        ws->planes = NULL;
+        ws->temp = NULL;
+        ws->scratch = NULL;
+        return FMETRICS_ERR_OUT_OF_MEMORY;
+    }
+
+    ws->width = width;
+    ws->height = height;
+    ws->pixels = pixels;
+    return FMETRICS_OK;
+}
+
 static FmetricsErr validate_image_pair(const FmetricsImg *const reference,
                                        const FmetricsImg *const distorted)
 {
@@ -407,16 +477,16 @@ static FmetricsErr ssimu2_compute(const FmetricsImg *const reference,
     const FmetricsErr valid = validate_image_pair(reference, distorted);
     if (valid != FMETRICS_OK) return valid;
 
-    const size_t pixels = (size_t)reference->width * reference->height;
-    float *planes = malloc(pixels * 6u * sizeof(*planes));
-    float *temp = malloc(pixels * (error_map != NULL ? 20u : 18u) * sizeof(*temp));
-    float *scratch = malloc(reference->width * sizeof(*scratch));
-    if (planes == NULL || temp == NULL || scratch == NULL) {
-        free(planes);
-        free(temp);
-        free(scratch);
-        return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
+    Ssimu2Workspace *ws;
+    FmetricsErr err = workspace_get(&ws);
+    if (err != FMETRICS_OK) return err;
+    err = workspace_ensure(ws, reference->width, reference->height);
+    if (err != FMETRICS_OK) return err;
+
+    const size_t pixels = ws->pixels;
+    float *const planes = ws->planes;
+    float *const temp = ws->temp;
+    float *const scratch = ws->scratch;
 
     float *ref_planes[3], *dis_planes[3];
     for (int i = 0; i < 3; i++) ref_planes[i] = planes + pixels * (size_t)i;
@@ -503,9 +573,6 @@ static FmetricsErr ssimu2_compute(const FmetricsImg *const reference,
         generate_error_map(error_accum, error_map, stride, reference->width,
                            reference->height);
 
-    free(planes);
-    free(temp);
-    free(scratch);
     return FMETRICS_OK;
 }
 

@@ -17,6 +17,7 @@
 #ifndef SSIMULACRA2_INTERNAL_H
 #define SSIMULACRA2_INTERNAL_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define restrict __restrict__
@@ -258,5 +259,13 @@ static const uint32_t TURBO_COLORMAP[256] = {
     0xff000c93u, 0xff000c92u, 0xff000b91u, 0xff000c91u,
     0xff000c90u, 0xff000c90u, 0xff000c90u, 0xff000d90u,
 };
+
+typedef struct Ssimu2Workspace {
+    uint32_t width, height;
+    size_t pixels;
+    float *planes;
+    float *temp;
+    float *scratch;
+} Ssimu2Workspace;
 
 #endif /* SSIMULACRA2_INTERNAL_H */

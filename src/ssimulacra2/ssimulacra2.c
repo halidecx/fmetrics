@@ -129,6 +129,14 @@ static inline double get_weight(const int c, const int scale, const int map,
     return WEIGHT[36 * c + 6 * scale + 3 * norm + map];
 }
 
+static inline bool active_weight(const int plane, const int scale,
+                                 const int map)
+{
+    const double w0 = fabs(get_weight(plane, scale, map, 0));
+    const double w1 = fabs(get_weight(plane, scale, map, 1));
+    return fmax(w0, w1) > 0.01;
+}
+
 static inline double fourth(const double y) {
     const double x = y * y;
     return x * x;
@@ -518,8 +526,8 @@ static FmetricsErr ssimu2_compute(const FmetricsImg *const reference,
         memcpy(buf[1][p], dis_planes[p], pixels * sizeof(float));
     }
 
-    double avg_ssim[SSIMU2_SCALES][6];
-    double avg_edge[SSIMU2_SCALES][12];
+    double avg_ssim[SSIMU2_SCALES][6] = {{0.0}};
+    double avg_edge[SSIMU2_SCALES][12] = {{0.0}};
     uint32_t stride2 = stride;
     uint32_t w2 = reference->width;
     uint32_t h2 = reference->height;
@@ -541,21 +549,32 @@ static FmetricsErr ssimu2_compute(const FmetricsImg *const reference,
         to_xyb(buf[1], buf[3], stride2, w2, h2);
 
         for (uint32_t plane = 0; plane < 3; plane++) {
-            multiply(buf[2][plane], buf[2][plane], buf[4][0], stride2, w2, h2);
-            blur(buf[4][0], buf[4][1], stride2, w2, h2, scratch);
-            multiply(buf[3][plane], buf[3][plane], buf[4][0], stride2, w2, h2);
-            blur(buf[4][0], buf[4][2], stride2, w2, h2, scratch);
-            multiply(buf[2][plane], buf[3][plane], buf[4][0], stride2, w2, h2);
-            blur(buf[4][0], buf[5][0], stride2, w2, h2, scratch);
-            blur(buf[2][plane], buf[5][1], stride2, w2, h2, scratch);
-            blur(buf[3][plane], buf[4][0], stride2, w2, h2, scratch);
-
-            ssim_map(buf[4][1], buf[4][2], buf[5][0], buf[5][1], buf[4][0],
-                     stride2, w2, h2, plane, one_per_pixels,
-                     avg_ssim[scale], error_scale, scale);
-            edge_map(buf[2][plane], buf[3][plane], buf[5][1], buf[4][0],
-                     stride2, w2, h2, plane, one_per_pixels,
-                     avg_edge[scale], error_scale, scale);
+            const bool ssim_on = active_weight((int)plane, (int)scale, 0);
+            const bool edge_on = active_weight((int)plane, (int)scale, 1) ||
+                                 active_weight((int)plane, (int)scale, 2);
+            if (ssim_on) {
+                multiply(buf[2][plane], buf[2][plane], buf[4][0], stride2,
+                         w2, h2);
+                blur(buf[4][0], buf[4][1], stride2, w2, h2, scratch);
+                multiply(buf[3][plane], buf[3][plane], buf[4][0], stride2,
+                         w2, h2);
+                blur(buf[4][0], buf[4][2], stride2, w2, h2, scratch);
+                multiply(buf[2][plane], buf[3][plane], buf[4][0], stride2,
+                         w2, h2);
+                blur(buf[4][0], buf[5][0], stride2, w2, h2, scratch);
+            }
+            if (ssim_on || edge_on) {
+                blur(buf[2][plane], buf[5][1], stride2, w2, h2, scratch);
+                blur(buf[3][plane], buf[4][0], stride2, w2, h2, scratch);
+            }
+            if (ssim_on)
+                ssim_map(buf[4][1], buf[4][2], buf[5][0], buf[5][1],
+                         buf[4][0], stride2, w2, h2, plane, one_per_pixels,
+                         avg_ssim[scale], error_scale, scale);
+            if (edge_on)
+                edge_map(buf[2][plane], buf[3][plane], buf[5][1], buf[4][0],
+                         stride2, w2, h2, plane, one_per_pixels,
+                         avg_edge[scale], error_scale, scale);
         }
 
         if (error_map != NULL) {

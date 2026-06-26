@@ -613,7 +613,7 @@ fn loadImage(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !imgio.
         return error.UnsupportedFileFormat;
     defer decoded.deinit(allocator);
 
-    return decoded.to8Bit(allocator);
+    return decoded.to8BitOwned(allocator);
 }
 
 fn writeErrorMapPAM(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {

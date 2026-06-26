@@ -7,8 +7,8 @@
             .hash = "spng-0.0.1-T166cP8UAABcBGTOPKx7kUUyHEcu0eDvN8LnSIj3S_cW",
         },
         .simpleimgio = .{
-            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#3fda94949e8d50a40e33624f020f56389a7fea29",
-            .hash = "simpleimgio-0.0.0-oHTuOenAAABfY2zCM_z9Q1u_MyuhO08PEi84TIcWNqag",
+            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#988a6b730eb4ad99ee4205ef40c035ded6a2099d",
+            .hash = "simpleimgio-0.0.0-oHTuOTfLAACpIG8VkUMQJOTXytlnfi2AVf83GwFXOtBP",
         },
         .fcvvdp = .{
             .url = "git+https://github.com/halidecx/fcvvdp.git#aaf1f57a9c57f41fd8955c66460b46b5c71a3f31",

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 const std = @import("std");
-const ssimu2 = @import("ssimulacra2.zig");
+const ssimu2 = @import("ssimulacra2/ssimulacra2.zig");
 const c = @cImport({
     @cInclude("src/fmetrics.h");
 });

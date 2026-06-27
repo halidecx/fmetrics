@@ -549,7 +549,7 @@ fn printUsage(metric: ?Metric) void {
                 print(
                     \\  -t, --threads u8
                     \\      task/frame thread count; default 0 (auto)
-                    \\  --err-map <out.pam|out.tga>
+                    \\  -e, --err-map <out.pam|out.tga>
                     \\      save SSIMULACRA2 error map for image inputs
                     \\  -v, --verbose
                     \\      show verbose output
@@ -716,7 +716,9 @@ pub fn main(init: std.process.Init) !void {
             verbose = true
         else if (std.mem.eql(u8, arg, "-j") or std.mem.eql(u8, arg, "--json"))
             json_output = true
-        else if (std.mem.eql(u8, arg, "--err-map")) {
+        else if (std.mem.eql(u8, arg, "--err-map") or
+            std.mem.eql(u8, arg, "-e"))
+        {
             if (metric != .ssimu2) {
                 print("Error: --err-map is only valid for ssimu2\n", .{});
                 printUsage(metric);
@@ -725,7 +727,7 @@ pub fn main(init: std.process.Init) !void {
             if (args.next()) |map_arg| {
                 error_map_path = map_arg;
             } else {
-                print("Error: Missing argument for --err-map\n", .{});
+                print("Error: Missing argument for -e / --err-map\n", .{});
                 printUsage(metric);
                 return error.InvalidArguments;
             }
@@ -784,7 +786,7 @@ pub fn main(init: std.process.Init) !void {
         return error.MismatchedInputTypes;
     }
     if (ref_is_y4m and error_map_path != null) {
-        print("Error: --err-map is only supported for image inputs\n", .{});
+        print("Error: -e / --err-map is only supported for image inputs\n", .{});
         return error.InvalidArguments;
     }
 

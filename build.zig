@@ -61,7 +61,7 @@ pub fn build(b: *std.Build) void {
     const lib = b.addLibrary(.{
         .name = "fmetrics",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/ssimulacra2/c_abi.zig"),
+            .root_source_file = b.path("src/zig_to_c.zig"),
             .target = target,
             .optimize = optimize,
             .link_libc = true,

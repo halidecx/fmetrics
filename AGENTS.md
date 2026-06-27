@@ -43,5 +43,5 @@ Always run a preliminary score check before making changes.
 Check performance:
 
 ```sh
-poop "./zig-out/bin/fmetrics <metric> zig-out/bin/ref.pam zig-out/bin/dst.pam"
+hyperfine -N --warmup 2 "./zig-out/bin/fmetrics <metric> zig-out/bin/ref.pam zig-out/bin/dst.pam"
 ```

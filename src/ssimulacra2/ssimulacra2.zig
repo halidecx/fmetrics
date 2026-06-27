@@ -202,18 +202,23 @@ fn blurH(srcp: []const f32, dstp: []f32, kernel: [K_SIZE]f32, w: i32) void {
     const interior_end: usize = @intCast(w - @min(w, RADIUS));
     var ju: usize = RADIUS;
     while (ju + VEC_LEN <= interior_end) : (ju += VEC_LEN) {
-        var sum: F32x8 = @splat(0.0);
-        inline for (0..K_SIZE) |k|
-            sum += @as(F32x8, @splat(kernel[k])) * loadF32x8(srcp, ju + k - RADIUS);
+        var sum = @as(F32x8, @splat(kernel[RADIUS])) * loadF32x8(srcp, ju);
+        inline for (1..RADIUS + 1) |k| {
+            const left = loadF32x8(srcp, ju - k);
+            const right = loadF32x8(srcp, ju + k);
+            sum += @as(F32x8, @splat(kernel[RADIUS + k])) * (left + right);
+        }
         storeF32x8(dstp, ju, sum);
     }
 
     j = @intCast(ju);
     while (j < w - @min(w, RADIUS)) : (j += 1) {
-        var sum: f32 = 0.0;
-        var k: i32 = 0;
-        while (k < K_SIZE) : (k += 1) {
-            sum += kernel[@intCast(k)] * srcp[@intCast(j - RADIUS + k)];
+        var sum: f32 = kernel[RADIUS] * srcp[@intCast(j)];
+        var k: i32 = 1;
+        while (k <= RADIUS) : (k += 1) {
+            const left = srcp[@intCast(j - k)];
+            const right = srcp[@intCast(j + k)];
+            sum += kernel[@intCast(RADIUS + k)] * (left + right);
         }
         dstp[@intCast(j)] = sum;
     }
@@ -239,16 +244,23 @@ fn blurH(srcp: []const f32, dstp: []f32, kernel: [K_SIZE]f32, w: i32) void {
 inline fn blurV(src: anytype, dstp: []f32, kernel: [K_SIZE]f32, w: u32) void {
     var j: usize = 0;
     while (j + VEC_LEN <= w) : (j += VEC_LEN) {
-        var accum: F32x8 = @splat(0.0);
-        inline for (0..K_SIZE) |k|
-            accum += @as(F32x8, @splat(kernel[k])) * loadF32x8(src[k], j);
+        var accum = @as(F32x8, @splat(kernel[RADIUS])) *
+            loadF32x8(src[RADIUS], j);
+        inline for (1..RADIUS + 1) |k| {
+            const up = loadF32x8(src[RADIUS - k], j);
+            const down = loadF32x8(src[RADIUS + k], j);
+            accum += @as(F32x8, @splat(kernel[RADIUS + k])) * (up + down);
+        }
         storeF32x8(dstp, j, accum);
     }
     while (j < w) : (j += 1) {
-        var accum: f32 = 0.0;
-        var k: u32 = 0;
-        while (k < K_SIZE) : (k += 1) {
-            accum += kernel[k] * @as(f32, @floatCast(src[k][j]));
+        var accum: f32 = kernel[RADIUS] *
+            @as(f32, @floatCast(src[RADIUS][j]));
+        var k: u32 = 1;
+        while (k <= RADIUS) : (k += 1) {
+            const up = @as(f32, @floatCast(src[RADIUS - k][j]));
+            const down = @as(f32, @floatCast(src[RADIUS + k][j]));
+            accum += kernel[RADIUS + k] * (up + down);
         }
         dstp[j] = accum;
     }
@@ -451,8 +463,24 @@ const OPSIN_ABSORBANCE_MATRIX = [_]f32{
 const OPSIN_ABSORBANCE_BIAS: f32 = K_D0;
 const ABSORBANCE_BIAS: f32 = -K_D1;
 
-inline fn cbrtVec(x: f32) f32 {
-    return std.math.lossyCast(f32, math.cbrt(x));
+inline fn cubeRootAndAdd(x: f32, add: f32) f32 {
+    const k_exp_bias: i32 = 0x54800000;
+    const k_exp_mul: i32 = 0x002AAAAA;
+    const k1_3: f32 = 1.0 / 3.0;
+    const k4_3: f32 = 4.0 / 3.0;
+    const xa_3 = k1_3 * x;
+    const m1: i32 = @bitCast(x);
+    const m2 = if (m1 == 0) 0 else k_exp_bias - (m1 >> 23) * k_exp_mul;
+    var r: f32 = @bitCast(m2);
+    var i: u32 = 0;
+    while (i < 3) : (i += 1) {
+        const r2 = r * r;
+        r = -xa_3 * (r2 * r2) + k4_3 * r;
+    }
+    var r2 = r * r;
+    r = k1_3 * (-x * r2 * r2 + r) + r;
+    r2 = r * r;
+    return r2 * x + add;
 }
 
 inline fn opsinAbsorbance(rgb: [3]f32) [3]f32 {
@@ -479,7 +507,7 @@ inline fn linearRGBtoXYB(input: [3]f32) [3]f32 {
     var i: u32 = 0;
     while (i < 3) : (i += 1) {
         if (mixed[i] < V00) mixed[i] = V00;
-        mixed[i] = cbrtVec(mixed[i]) + ABSORBANCE_BIAS;
+        mixed[i] = cubeRootAndAdd(mixed[i], ABSORBANCE_BIAS);
     }
     return mixedToXYB(mixed);
 }
@@ -613,26 +641,27 @@ inline fn edgeMap(
     error_map: ?[]f32,
     scale: u32,
 ) void {
-    var sum2 = [4]f64{ 0.0, 0.0, 0.0, 0.0 };
+    var sum2 = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
     var y: u32 = 0;
     while (y < h) : (y += 1) {
         const row = y * stride;
         var x: usize = 0;
         if (error_map == null) {
-            var sum_artifact: F64x4 = @splat(0.0);
-            var sum_artifact4: F64x4 = @splat(0.0);
-            var sum_lost: F64x4 = @splat(0.0);
-            var sum_lost4: F64x4 = @splat(0.0);
-            while (x + 4 <= w) : (x += 4) {
-                const im1v: F64x4 = @floatCast(loadF32x4(im1, row + x));
-                const im2v: F64x4 = @floatCast(loadF32x4(im2, row + x));
-                const mu1v: F64x4 = @floatCast(loadF32x4(mu1, row + x));
-                const mu2v: F64x4 = @floatCast(loadF32x4(mu2, row + x));
-
-                const d = (@as(F64x4, @splat(1.0)) + @abs(im2v - mu2v)) /
-                    (@as(F64x4, @splat(1.0)) + @abs(im1v - mu1v)) - @as(F64x4, @splat(1.0));
-                const artifact = @max(d, @as(F64x4, @splat(0.0)));
-                const detail_lost = @max(-d, @as(F64x4, @splat(0.0)));
+            var sum_artifact: F32x8 = @splat(0.0);
+            var sum_artifact4: F32x8 = @splat(0.0);
+            var sum_lost: F32x8 = @splat(0.0);
+            var sum_lost4: F32x8 = @splat(0.0);
+            while (x + VEC_LEN <= w) : (x += VEC_LEN) {
+                const im1v = loadF32x8(im1, row + x);
+                const im2v = loadF32x8(im2, row + x);
+                const mu1v = loadF32x8(mu1, row + x);
+                const mu2v = loadF32x8(mu2, row + x);
+                const one: F32x8 = @splat(1.0);
+                const zero: F32x8 = @splat(0.0);
+                const d = (one + @abs(im2v - mu2v)) /
+                    (one + @abs(im1v - mu1v)) - one;
+                const artifact = @max(d, zero);
+                const detail_lost = @max(-d, zero);
                 const artifact2 = artifact * artifact;
                 const lost2 = detail_lost * detail_lost;
                 sum_artifact += artifact;
@@ -646,33 +675,53 @@ inline fn edgeMap(
             sum2[3] += @reduce(.Add, sum_lost4);
         }
         while (x < w) : (x += 1) {
-            const d1: f64 = (1.0 + @as(f64, @abs(@as(f32, @floatCast(im2[row + x])) - @as(f32, @floatCast(mu2[row + x]))))) /
-                (1.0 + @as(f64, @abs(@as(f32, @floatCast(im1[row + x])) - @as(f32, @floatCast(mu1[row + x]))))) - 1.0;
-            const artifact: f64 = @max(d1, 0.0);
+            const d1 = (1.0 + @abs(im2[row + x] - mu2[row + x])) /
+                (1.0 + @abs(im1[row + x] - mu1[row + x])) - 1.0;
+            const artifact = @max(d1, 0.0);
             sum2[0] += artifact;
-            sum2[1] += tothe4th(artifact);
-            const detail_lost: f64 = @max(-d1, 0.0);
+            sum2[1] += artifact * artifact * artifact * artifact;
+            const detail_lost = @max(-d1, 0.0);
             sum2[2] += detail_lost;
-            sum2[3] += tothe4th(detail_lost);
+            sum2[3] += detail_lost * detail_lost * detail_lost * detail_lost;
 
             if (error_map) |emap| {
-                const artifact_f: f32 = @floatCast(artifact);
-                const detail_lost_f: f32 = @floatCast(detail_lost);
-                const weight1: f32 = @floatCast(getWeight(@intCast(plane), @intCast(scale), 1, 0));
-                const weight2: f32 = @floatCast(getWeight(@intCast(plane), @intCast(scale), 1, 1));
-                const weight3: f32 = @floatCast(getWeight(@intCast(plane), @intCast(scale), 2, 0));
-                const weight4: f32 = @floatCast(getWeight(@intCast(plane), @intCast(scale), 2, 1));
-                emap[row + x] += weight1 * @abs(artifact_f);
-                emap[row + x] += weight2 * @abs(artifact_f);
-                emap[row + x] += weight3 * @abs(detail_lost_f);
-                emap[row + x] += weight4 * @abs(detail_lost_f);
+                const weight1: f32 = @floatCast(getWeight(
+                    @intCast(plane),
+                    @intCast(scale),
+                    1,
+                    0,
+                ));
+                const weight2: f32 = @floatCast(getWeight(
+                    @intCast(plane),
+                    @intCast(scale),
+                    1,
+                    1,
+                ));
+                const weight3: f32 = @floatCast(getWeight(
+                    @intCast(plane),
+                    @intCast(scale),
+                    2,
+                    0,
+                ));
+                const weight4: f32 = @floatCast(getWeight(
+                    @intCast(plane),
+                    @intCast(scale),
+                    2,
+                    1,
+                ));
+                emap[row + x] += weight1 * @abs(artifact);
+                emap[row + x] += weight2 * @abs(artifact);
+                emap[row + x] += weight3 * @abs(detail_lost);
+                emap[row + x] += weight4 * @abs(detail_lost);
             }
         }
     }
-    plane_avg_edge[plane * 4] = one_per_pixels * sum2[0];
-    plane_avg_edge[plane * 4 + 1] = @sqrt(@sqrt(one_per_pixels * sum2[1]));
-    plane_avg_edge[plane * 4 + 2] = one_per_pixels * sum2[2];
-    plane_avg_edge[plane * 4 + 3] = @sqrt(@sqrt(one_per_pixels * sum2[3]));
+    plane_avg_edge[plane * 4] = one_per_pixels * @as(f64, sum2[0]);
+    plane_avg_edge[plane * 4 + 1] =
+        @sqrt(@sqrt(one_per_pixels * @as(f64, sum2[1])));
+    plane_avg_edge[plane * 4 + 2] = one_per_pixels * @as(f64, sum2[2]);
+    plane_avg_edge[plane * 4 + 3] =
+        @sqrt(@sqrt(one_per_pixels * @as(f64, sum2[3])));
 }
 
 inline fn score(plane_avg_ssim: [6][6]f64, plane_avg_edge: [6][12]f64) f64 {
@@ -819,12 +868,15 @@ fn processWithScratch(
 
     var scale: u32 = 0;
     while (scale < 6) : (scale += 1) {
+        if (w2 < 8 or h2 < 8) break;
+
         if (scale > 0) {
             downscale(srcp1b, srcp1b, stride2, w2, h2);
             downscale(srcp2b, srcp2b, stride2, w2, h2);
             stride2 = @divTrunc((stride2 + 1), 2);
             w2 = @divTrunc((w2 + 1), 2);
             h2 = @divTrunc((h2 + 1), 2);
+            if (w2 < 8 or h2 < 8) break;
         }
 
         if (error_map != null) {

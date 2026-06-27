@@ -61,6 +61,7 @@ pub fn build(b: *std.Build) void {
     const lib = b.addLibrary(.{
         .name = "fmetrics",
         .root_module = b.createModule(.{
+            .root_source_file = b.path("src/ssimulacra2/c_abi.zig"),
             .target = target,
             .optimize = optimize,
             .link_libc = true,
@@ -70,7 +71,6 @@ pub fn build(b: *std.Build) void {
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
         "src/iwssim/iwssim.c",
-        "src/ssimulacra2/ssimulacra2.c",
     };
     const lib_flags = [_][]const u8{
         "-std=c23",

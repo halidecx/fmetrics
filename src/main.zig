@@ -853,16 +853,29 @@ pub fn main(init: std.process.Init) !void {
         const dis_rgb = try toRGB8(allocator, dis_img);
         defer allocator.free(dis_rgb);
 
+        var result: f64 = undefined;
+        var cvvdp_quality: ?f64 = null;
+
         if (metric == .cvvdp) {
             var ref = cvvdpImageFromRgb(ref_rgb, ref_img.width, ref_img.height);
             var dis = cvvdpImageFromRgb(dis_rgb, dis_img.width, dis_img.height);
-            var result: c.FcvvdpResult = undefined;
-            const err = c.cvvdp_compare_images(&ref, &dis, display_model, 1, null, &result);
+            var cvvdp_result: c.FcvvdpResult = undefined;
+            const err = c.cvvdp_compare_images(
+                &ref,
+                &dis,
+                display_model,
+                1,
+                null,
+                &cvvdp_result,
+            );
 
             if (err != c.CVVDP_OK) {
                 print("Error: CVVDP comparison failed: {s}\n", .{c.cvvdp_error_string(err)});
                 return error.CVVDPError;
             }
+
+            result = cvvdp_result.jod;
+            cvvdp_quality = cvvdp_result.quality;
 
             if (json_output) {
                 print(
@@ -875,86 +888,143 @@ pub fn main(init: std.process.Init) !void {
                     \\  "width": {d},
                     \\  "height": {d}
                     \\}}
-                , .{ result.jod, result.quality, displayModelName(display_model), ref_filename.?, dis_filename.?, ref.width, ref.height });
-            } else {
-                print("JOD: {d:.4}\n", .{result.jod});
-                if (verbose) {
-                    print("quality: {d:.6}\n", .{result.quality});
-                    print("model:   {s}\n", .{displayModelName(display_model)});
-                    print("width:   {d}\n", .{ref.width});
-                    print("height:  {d}\n", .{ref.height});
-                }
+                , .{
+                    result,
+                    cvvdp_quality.?,
+                    displayModelName(display_model),
+                    ref_filename.?,
+                    dis_filename.?,
+                    ref.width,
+                    ref.height,
+                });
+                return;
             }
-            return;
-        }
-
-        var ref = c.FmetricsImg{
-            .data = ref_rgb.ptr,
-            .width = @intCast(ref_img.width),
-            .height = @intCast(ref_img.height),
-            .stride = @intCast(ref_img.width * 3),
-            .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-            .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-        };
-
-        var dis = c.FmetricsImg{
-            .data = dis_rgb.ptr,
-            .width = @intCast(dis_img.width),
-            .height = @intCast(dis_img.height),
-            .stride = @intCast(dis_img.width * 3),
-            .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-            .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-        };
-
-        var result: f64 = undefined;
-        var error_map: ?[]u32 = null;
-        defer if (error_map) |map| allocator.free(map);
-        if (error_map_path != null) {
-            const pixels = try std.math.mul(usize, ref_img.width, ref_img.height);
-            error_map = try allocator.alloc(u32, pixels);
-        }
-        const err = switch (metric) {
-            .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
-            .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
-            .ssimu2 => if (error_map) |map|
-                c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
-            else
-                c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
-            .butteraugli => if (error_map) |map|
-                c.fmetrics_butteraugli_cmp_map(&ref, &dis, &butteraugli_options, &result, map.ptr)
-            else
-                c.fmetrics_butteraugli_cmp(&ref, &dis, &butteraugli_options, &result),
-            .cvvdp => unreachable,
-        };
-
-        if (err != c.FMETRICS_OK) {
-            print("Error: {s} comparison failed: {s}\n", .{ metricName(metric), c.fmetrics_error_str(err) });
-            return error.MetricError;
-        }
-
-        if (error_map_path) |path|
-            if (error_map) |map| {
-                try writeErrorMapPAM(allocator, io, path, map, ref_img.width, ref_img.height);
-                if (!json_output and verbose)
-                    print("error_map: {s}\n", .{path});
+        } else {
+            var ref = c.FmetricsImg{
+                .data = ref_rgb.ptr,
+                .width = @intCast(ref_img.width),
+                .height = @intCast(ref_img.height),
+                .stride = @intCast(ref_img.width * 3),
+                .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
+                .colorspace = c.FMETRICS_COLORSPACE_SRGB,
             };
 
+            var dis = c.FmetricsImg{
+                .data = dis_rgb.ptr,
+                .width = @intCast(dis_img.width),
+                .height = @intCast(dis_img.height),
+                .stride = @intCast(dis_img.width * 3),
+                .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
+                .colorspace = c.FMETRICS_COLORSPACE_SRGB,
+            };
+
+            var error_map: ?[]u32 = null;
+            defer if (error_map) |map| allocator.free(map);
+            if (error_map_path != null) {
+                const pixels = try std.math.mul(
+                    usize,
+                    ref_img.width,
+                    ref_img.height,
+                );
+                error_map = try allocator.alloc(u32, pixels);
+            }
+            const err = switch (metric) {
+                .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
+                .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
+                .ssimu2 => if (error_map) |map|
+                    c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
+                else
+                    c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
+                .butteraugli => if (error_map) |map|
+                    c.fmetrics_butteraugli_cmp_map(
+                        &ref,
+                        &dis,
+                        &butteraugli_options,
+                        &result,
+                        map.ptr,
+                    )
+                else
+                    c.fmetrics_butteraugli_cmp(
+                        &ref,
+                        &dis,
+                        &butteraugli_options,
+                        &result,
+                    ),
+                .cvvdp => unreachable,
+            };
+
+            if (err != c.FMETRICS_OK) {
+                print(
+                    "Error: {s} comparison failed: {s}\n",
+                    .{ metricName(metric), c.fmetrics_error_str(err) },
+                );
+                return error.MetricError;
+            }
+
+            if (error_map_path) |path|
+                if (error_map) |map| {
+                    try writeErrorMapPAM(
+                        allocator,
+                        io,
+                        path,
+                        map,
+                        ref_img.width,
+                        ref_img.height,
+                    );
+                    if (!json_output and verbose)
+                        print("error_map: {s}\n", .{path});
+                };
+        }
+
         if (json_output) {
-            print(
-                \\{{
-                \\  "{s}": {d:.6},
-                \\  "reference": "{s}",
-                \\  "distorted": "{s}",
-                \\  "width": {d},
-                \\  "height": {d}
-                \\}}
-            , .{ metricName(metric), result, ref_filename.?, dis_filename.?, ref.width, ref.height });
+            if (cvvdp_quality) |quality| {
+                print(
+                    \\{{
+                    \\  "jod": {d:.6},
+                    \\  "quality": {d:.6},
+                    \\  "display_model": "{s}",
+                    \\  "reference": "{s}",
+                    \\  "distorted": "{s}",
+                    \\  "width": {d},
+                    \\  "height": {d}
+                    \\}}
+                , .{
+                    result,
+                    quality,
+                    displayModelName(display_model),
+                    ref_filename.?,
+                    dis_filename.?,
+                    ref_img.width,
+                    ref_img.height,
+                });
+            } else {
+                print(
+                    \\{{
+                    \\  "{s}": {d:.6},
+                    \\  "reference": "{s}",
+                    \\  "distorted": "{s}",
+                    \\  "width": {d},
+                    \\  "height": {d}
+                    \\}}
+                , .{
+                    metricName(metric),
+                    result,
+                    ref_filename.?,
+                    dis_filename.?,
+                    ref_img.width,
+                    ref_img.height,
+                });
+            }
         } else {
-            print("{s}: {d:.6}\n", .{ metricName(metric), result });
+            print("{d:.6}\n", .{result});
             if (verbose) {
-                print("width:   {d}\n", .{ref.width});
-                print("height:  {d}\n", .{ref.height});
-                if (metric == .butteraugli) {
+                if (cvvdp_quality) |quality| {
+                    print("quality: {d:.6}\n", .{quality});
+                    print("model:   {s}\n", .{displayModelName(display_model)});
+                }
+                print("width:   {d}\n", .{ref_img.width});
+                print("height:  {d}\n", .{ref_img.height});
+                if (metric == .butteraugli and cvvdp_quality == null) {
                     print("nits:    {d:.4}\n", .{butteraugli_options.intensity_target});
                     print("pnorm:   {d}\n", .{butteraugli_options.pnorm});
                 }
@@ -975,6 +1045,11 @@ pub fn main(init: std.process.Init) !void {
         print("  Distorted: {d}x{d}\n", .{ dis_dec.header.width, dis_dec.header.height });
         return error.DimensionMismatch;
     }
+
+    var frame_index: usize = 0;
+    var result: f64 = undefined;
+    var cvvdp_quality: ?f64 = null;
+    var stats: ?VideoStats = null;
 
     if (metric == .cvvdp) {
         const fps: f32 = if (ref_dec.header.fps_num != 0)
@@ -1004,8 +1079,7 @@ pub fn main(init: std.process.Init) !void {
         const dis_rgb = try allocator.alloc(u8, pixels * 3);
         defer allocator.free(dis_rgb);
 
-        var frame_index: usize = 0;
-        var result: c.FcvvdpResult = undefined;
+        var cvvdp_result: c.FcvvdpResult = undefined;
 
         while (true) {
             const ref_frame_opt = try ref_dec.readFrame();
@@ -1036,7 +1110,12 @@ pub fn main(init: std.process.Init) !void {
 
                 var ref = cvvdpImageFromRgb(ref_rgb, ref_frame.width, ref_frame.height);
                 var dis = cvvdpImageFromRgb(dis_rgb, dis_frame.width, dis_frame.height);
-                const proc_err = c.cvvdp_process_frame(ctx_ptr.?, &ref, &dis, &result);
+                const proc_err = c.cvvdp_process_frame(
+                    ctx_ptr.?,
+                    &ref,
+                    &dis,
+                    &cvvdp_result,
+                );
                 if (proc_err != c.CVVDP_OK) {
                     print("Error: CVVDP frame processing failed at frame {d}: {s}\n", .{ frame_index, c.cvvdp_error_string(proc_err) });
                     return error.CVVDPError;
@@ -1047,8 +1126,150 @@ pub fn main(init: std.process.Init) !void {
         }
 
         if (frame_index == 0) return error.EmptyY4M;
+        result = cvvdp_result.jod;
+        cvvdp_quality = cvvdp_result.quality;
+    } else {
+        const parallelism = workerCount(threads);
+        var score_sink = ScoreSink{ .io = io };
+        defer score_sink.deinit(allocator);
 
-        if (json_output) {
+        if (parallelism == 1) {
+            var worker = try VideoWorker.init(
+                allocator,
+                null,
+                &score_sink,
+                metric,
+                ref_dec.header.width,
+                ref_dec.header.height,
+                butteraugli_options,
+            );
+            defer worker.deinit();
+
+            while (true) {
+                const ref_frame_opt = try ref_dec.readFrame();
+                const dis_frame_opt = try dis_dec.readFrame();
+
+                if (ref_frame_opt == null and dis_frame_opt == null) break;
+                if (ref_frame_opt == null or dis_frame_opt == null) {
+                    if (ref_frame_opt) |frame| {
+                        var mutable_frame = frame;
+                        mutable_frame.deinit(allocator);
+                    }
+                    if (dis_frame_opt) |frame| {
+                        var mutable_frame = frame;
+                        mutable_frame.deinit(allocator);
+                    }
+                    print("Error: Video frame count does not match\n", .{});
+                    return error.FrameCountMismatch;
+                }
+
+                {
+                    var ref_frame = ref_frame_opt.?;
+                    defer ref_frame.deinit(allocator);
+                    var dis_frame = dis_frame_opt.?;
+                    defer dis_frame.deinit(allocator);
+
+                    try worker.processFrames(ref_frame, dis_frame);
+                }
+                frame_index += 1;
+            }
+        } else {
+            const queue_capacity = @max(32, parallelism * 4);
+            var queue = try VideoQueue.init(allocator, io, queue_capacity);
+            defer queue.deinit();
+
+            var workers = try allocator.alloc(VideoWorker, parallelism);
+            var workers_len: usize = 0;
+            defer {
+                for (workers[0..workers_len]) |*worker| worker.deinit();
+                allocator.free(workers);
+            }
+
+            while (workers_len < workers.len) : (workers_len += 1)
+                workers[workers_len] = try VideoWorker.init(
+                    allocator,
+                    &queue,
+                    &score_sink,
+                    metric,
+                    ref_dec.header.width,
+                    ref_dec.header.height,
+                    butteraugli_options,
+                );
+
+            const spawned_count = parallelism - 1;
+            var worker_threads = try allocator.alloc(std.Thread, spawned_count);
+            var spawned_len: usize = 0;
+            defer allocator.free(worker_threads);
+            defer for (worker_threads[0..spawned_len]) |thread| thread.join();
+
+            while (spawned_len < worker_threads.len) : (spawned_len += 1) {
+                worker_threads[spawned_len] = try std.Thread.spawn(
+                    .{},
+                    VideoWorker.worker,
+                    .{&workers[spawned_len]},
+                );
+            }
+
+            var produce_err: ?anyerror = null;
+            while (true) {
+                const ref_frame_opt = ref_dec.readFrame() catch |err| {
+                    produce_err = err;
+                    break;
+                };
+                const dis_frame_opt = dis_dec.readFrame() catch |err| {
+                    if (ref_frame_opt) |frame| {
+                        var mutable_frame = frame;
+                        mutable_frame.deinit(allocator);
+                    }
+                    produce_err = err;
+                    break;
+                };
+
+                if (ref_frame_opt == null and dis_frame_opt == null) break;
+                if (ref_frame_opt == null or dis_frame_opt == null) {
+                    if (ref_frame_opt) |frame| {
+                        var mutable_frame = frame;
+                        mutable_frame.deinit(allocator);
+                    }
+                    if (dis_frame_opt) |frame| {
+                        var mutable_frame = frame;
+                        mutable_frame.deinit(allocator);
+                    }
+                    print("Error: Video frame count does not match\n", .{});
+                    produce_err = error.FrameCountMismatch;
+                    break;
+                }
+
+                if (!queue.push(.{
+                    .ref_frame = ref_frame_opt.?,
+                    .dis_frame = dis_frame_opt.?,
+                })) {
+                    produce_err = error.MetricError;
+                    break;
+                }
+                frame_index += 1;
+            }
+
+            _ = queue.push(.{ .is_end = true });
+            workers[spawned_count].worker();
+
+            for (worker_threads[0..spawned_len]) |thread| thread.join();
+            spawned_len = 0;
+
+            if (produce_err) |err| return err;
+            for (workers) |worker| {
+                if (worker.err) |err| return err;
+            }
+        }
+
+        if (frame_index == 0) return error.EmptyY4M;
+
+        stats = try computeVideoStats(allocator, score_sink.scores.items);
+        result = stats.?.avg;
+    }
+
+    if (json_output) {
+        if (cvvdp_quality) |quality| {
             print(
                 \\{{
                 \\  "jod": {d:.6},
@@ -1060,176 +1281,55 @@ pub fn main(init: std.process.Init) !void {
                 \\  "height": {d},
                 \\  "frames": {d}
                 \\}}
-            , .{ result.jod, result.quality, displayModelName(display_model), ref_filename.?, dis_filename.?, ref_dec.header.width, ref_dec.header.height, frame_index });
-        } else {
-            print("JOD: {d:.4}\n", .{result.jod});
-            if (verbose) {
-                print("quality: {d:.6}\n", .{result.quality});
-                print("model:   {s}\n", .{displayModelName(display_model)});
-                print("frames:  {d}\n", .{frame_index});
-            }
-        }
-        return;
-    }
-
-    const parallelism = workerCount(threads);
-    var score_sink = ScoreSink{ .io = io };
-    defer score_sink.deinit(allocator);
-    var frame_index: usize = 0;
-
-    if (parallelism == 1) {
-        var worker = try VideoWorker.init(
-            allocator,
-            null,
-            &score_sink,
-            metric,
-            ref_dec.header.width,
-            ref_dec.header.height,
-            butteraugli_options,
-        );
-        defer worker.deinit();
-
-        while (true) {
-            const ref_frame_opt = try ref_dec.readFrame();
-            const dis_frame_opt = try dis_dec.readFrame();
-
-            if (ref_frame_opt == null and dis_frame_opt == null) break;
-            if (ref_frame_opt == null or dis_frame_opt == null) {
-                if (ref_frame_opt) |frame| {
-                    var mutable_frame = frame;
-                    mutable_frame.deinit(allocator);
-                }
-                if (dis_frame_opt) |frame| {
-                    var mutable_frame = frame;
-                    mutable_frame.deinit(allocator);
-                }
-                print("Error: Video frame count does not match\n", .{});
-                return error.FrameCountMismatch;
-            }
-
-            {
-                var ref_frame = ref_frame_opt.?;
-                defer ref_frame.deinit(allocator);
-                var dis_frame = dis_frame_opt.?;
-                defer dis_frame.deinit(allocator);
-
-                try worker.processFrames(ref_frame, dis_frame);
-            }
-            frame_index += 1;
-        }
-    } else {
-        const queue_capacity = @max(32, parallelism * 4);
-        var queue = try VideoQueue.init(allocator, io, queue_capacity);
-        defer queue.deinit();
-
-        var workers = try allocator.alloc(VideoWorker, parallelism);
-        var workers_len: usize = 0;
-        defer {
-            for (workers[0..workers_len]) |*worker| worker.deinit();
-            allocator.free(workers);
-        }
-
-        while (workers_len < workers.len) : (workers_len += 1)
-            workers[workers_len] = try VideoWorker.init(
-                allocator,
-                &queue,
-                &score_sink,
-                metric,
+            , .{
+                result,
+                quality,
+                displayModelName(display_model),
+                ref_filename.?,
+                dis_filename.?,
                 ref_dec.header.width,
                 ref_dec.header.height,
-                butteraugli_options,
-            );
-
-        const spawned_count = parallelism - 1;
-        var worker_threads = try allocator.alloc(std.Thread, spawned_count);
-        var spawned_len: usize = 0;
-        defer allocator.free(worker_threads);
-        defer for (worker_threads[0..spawned_len]) |thread| thread.join();
-
-        while (spawned_len < worker_threads.len) : (spawned_len += 1) {
-            worker_threads[spawned_len] = try std.Thread.spawn(.{}, VideoWorker.worker, .{&workers[spawned_len]});
+                frame_index,
+            });
+        } else {
+            print(
+                \\{{
+                \\  "{s}": {d:.6},
+                \\  "quality": {d:.6},
+                \\  "reference": "{s}",
+                \\  "distorted": "{s}",
+                \\  "width": {d},
+                \\  "height": {d},
+                \\  "frames": {d}
+                \\}}
+            , .{
+                metricName(metric),
+                result,
+                result,
+                ref_filename.?,
+                dis_filename.?,
+                ref_dec.header.width,
+                ref_dec.header.height,
+                frame_index,
+            });
         }
-
-        var produce_err: ?anyerror = null;
-        while (true) {
-            const ref_frame_opt = ref_dec.readFrame() catch |err| {
-                produce_err = err;
-                break;
-            };
-            const dis_frame_opt = dis_dec.readFrame() catch |err| {
-                if (ref_frame_opt) |frame| {
-                    var mutable_frame = frame;
-                    mutable_frame.deinit(allocator);
-                }
-                produce_err = err;
-                break;
-            };
-
-            if (ref_frame_opt == null and dis_frame_opt == null) break;
-            if (ref_frame_opt == null or dis_frame_opt == null) {
-                if (ref_frame_opt) |frame| {
-                    var mutable_frame = frame;
-                    mutable_frame.deinit(allocator);
-                }
-                if (dis_frame_opt) |frame| {
-                    var mutable_frame = frame;
-                    mutable_frame.deinit(allocator);
-                }
-                print("Error: Video frame count does not match\n", .{});
-                produce_err = error.FrameCountMismatch;
-                break;
-            }
-
-            if (!queue.push(.{
-                .ref_frame = ref_frame_opt.?,
-                .dis_frame = dis_frame_opt.?,
-            })) {
-                produce_err = error.MetricError;
-                break;
-            }
-            frame_index += 1;
-        }
-
-        _ = queue.push(.{ .is_end = true });
-        workers[spawned_count].worker();
-
-        for (worker_threads[0..spawned_len]) |thread| thread.join();
-        spawned_len = 0;
-
-        if (produce_err) |err| return err;
-        for (workers) |worker| {
-            if (worker.err) |err| return err;
-        }
-    }
-
-    if (frame_index == 0) return error.EmptyY4M;
-
-    const stats = try computeVideoStats(allocator, score_sink.scores.items);
-
-    if (json_output) {
-        print(
-            \\{{
-            \\  "{s}": {d:.6},
-            \\  "quality": {d:.6},
-            \\  "reference": "{s}",
-            \\  "distorted": "{s}",
-            \\  "width": {d},
-            \\  "height": {d},
-            \\  "frames": {d}
-            \\}}
-        , .{ metricName(metric), stats.avg, stats.avg, ref_filename.?, dis_filename.?, ref_dec.header.width, ref_dec.header.height, frame_index });
     } else {
-        print("{s}: {d:.6}\n", .{ metricName(metric), stats.avg });
+        print("{d:.6}\n", .{result});
         if (verbose) {
-            print("frames:  {d}\n", .{stats.frames});
-            print("avg:     {d:.8}\n", .{stats.avg});
-            print("stddev:  {d:.8}\n", .{stats.stddev});
-            print("median:  {d:.8}\n", .{stats.median});
-            print("p5:      {d:.8}\n", .{stats.p5});
-            print("p95:     {d:.8}\n", .{stats.p95});
-            print("min:     {d:.8}\n", .{stats.min});
-            print("max:     {d:.8}\n", .{stats.max});
-            if (metric == .butteraugli) {
+            print("frames:  {d}\n", .{frame_index});
+            if (cvvdp_quality) |quality| {
+                print("quality: {d:.6}\n", .{quality});
+                print("model:   {s}\n", .{displayModelName(display_model)});
+            } else {
+                print("avg:     {d:.8}\n", .{stats.?.avg});
+                print("stddev:  {d:.8}\n", .{stats.?.stddev});
+                print("median:  {d:.8}\n", .{stats.?.median});
+                print("p5:      {d:.8}\n", .{stats.?.p5});
+                print("p95:     {d:.8}\n", .{stats.?.p95});
+                print("min:     {d:.8}\n", .{stats.?.min});
+                print("max:     {d:.8}\n", .{stats.?.max});
+            }
+            if (metric == .butteraugli and cvvdp_quality == null) {
                 print("nits:    {d:.4}\n", .{butteraugli_options.intensity_target});
                 print("pnorm:   {d}\n", .{butteraugli_options.pnorm});
             }

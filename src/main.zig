@@ -31,6 +31,7 @@ const VideoStats = struct {
 
 const Metric = enum {
     iwssim,
+    msssim,
     ssimu2,
     butteraugli,
     cvvdp,
@@ -39,6 +40,8 @@ const Metric = enum {
 fn parseMetric(name: []const u8) ?Metric {
     if (std.ascii.eqlIgnoreCase(name, "iwssim") or std.ascii.eqlIgnoreCase(name, "iw-ssim"))
         return .iwssim;
+    if (std.ascii.eqlIgnoreCase(name, "msssim") or std.ascii.eqlIgnoreCase(name, "ms-ssim"))
+        return .msssim;
     if (std.ascii.eqlIgnoreCase(name, "ssimu2") or std.ascii.eqlIgnoreCase(name, "ssimulacra2"))
         return .ssimu2;
     if (std.ascii.eqlIgnoreCase(name, "butteraugli") or
@@ -132,6 +135,7 @@ fn displayModelName(model: c.FcvvdpDisplayModel) []const u8 {
 fn metricName(metric: Metric) []const u8 {
     return switch (metric) {
         .iwssim => "iwssim",
+        .msssim => "msssim",
         .ssimu2 => "ssimu2",
         .butteraugli => "butteraugli",
         .cvvdp => "cvvdp",
@@ -375,6 +379,7 @@ const VideoWorker = struct {
         var result: f64 = undefined;
         const err = switch (self.metric) {
             .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
+            .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
             .ssimu2 => c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
             .butteraugli => c.fmetrics_butteraugli_cmp(&ref, &dis, &self.butteraugli_options, &result),
             .cvvdp => unreachable,
@@ -551,6 +556,20 @@ fn cvvdpImageFromRgb(rgb: []const u8, width: usize, height: usize) c.FcvvdpImage
 
 fn printUsage(metric: ?Metric) void {
     print("\n", .{});
+    const common_opts_str =
+        \\  -v, --verbose
+        \\      show verbose output
+        \\  -j, --json
+        \\      output result as JSON
+        \\  -h, --help
+        \\      show this help message
+    ;
+    const frame_thread_str =
+        \\  -t, --threads u8
+        \\      frame thread count; default 0 (auto)
+        \\
+    ;
+
     if (metric) |m| {
         print("usage: fmetrics {s} [options] <reference> <distorted>\n\n", .{metricName(m)});
         print("compare two images/videos using the {s} perceptual quality metric\n\n", .{metricName(m)});
@@ -558,56 +577,38 @@ fn printUsage(metric: ?Metric) void {
         switch (m) {
             .ssimu2 => {
                 print(
-                    \\  -t, --threads u8
-                    \\      task/frame thread count; default 0 (auto)
                     \\  -e, --err-map <out.pam|out.tga>
                     \\      save SSIMULACRA2 error map for image inputs
-                    \\  -v, --verbose
-                    \\      show verbose output
-                    \\  -j, --json
-                    \\      output result as JSON
-                    \\  -h, --help
-                    \\      show this help message
+                    \\
                 , .{});
+                print(frame_thread_str, .{});
             },
-            .iwssim, .butteraugli => {
-                if (m == .butteraugli) {
-                    print(
-                        \\  -i, --intensity-target f32
-                        \\      viewing-condition screen nits; default 203
-                        \\  -p, --pnorm i32
-                        \\      p-norm used to pool the distance map; default 2
-                        \\  -e, --err-map <out.pam|out.tga>
-                        \\      save Butteraugli distance map for image inputs
-                        \\
-                    , .{});
-                }
+            .iwssim, .msssim => {
+                print(frame_thread_str, .{});
+            },
+            .butteraugli => {
                 print(
-                    \\  -t, --threads u8
-                    \\      task/frame thread count; default 0 (auto)
-                    \\  -v, --verbose
-                    \\      show verbose output
-                    \\  -j, --json
-                    \\      output result as JSON
-                    \\  -h, --help
-                    \\      show this help message
+                    \\  -i, --intensity-target f32
+                    \\      viewing-condition screen nits; default 203
+                    \\  -p, --pnorm i32
+                    \\      p-norm used to pool the distance map; default 2
+                    \\  -e, --err-map <out.pam|out.tga>
+                    \\      save Butteraugli distance map for image inputs
+                    \\
                 , .{});
+                print(frame_thread_str, .{});
             },
             .cvvdp => {
                 print(
                     \\  -m, --model <name>
                     \\      CVVDP display model; default fhd
                     \\  -t, --threads u8
-                    \\      task/frame thread count; default 0 (auto)
-                    \\  -v, --verbose
-                    \\      show verbose output
-                    \\  -j, --json
-                    \\      output result as JSON
-                    \\  -h, --help
-                    \\      show this help message
+                    \\      task thread count; default 0 (auto)
+                    \\
                 , .{});
             },
         }
+        print(common_opts_str, .{});
         print("\n\n\x1b[37msRGB PNG, PNM/PAM, QOI, or Y4M input expected\x1b[0m\n", .{});
         return;
     }
@@ -617,13 +618,9 @@ fn printUsage(metric: ?Metric) void {
         \\
         \\compare two images/videos using various perceptual quality metrics
         \\
-        \\metrics:
-        \\  iwssim
-        \\  ssimu2
-        \\  butteraugli
-        \\  cvvdp
+        \\metrics:  iwssim, msssim, ssimu2, butter, cvvdp
         \\
-        \\run `fmetrics <metric> --help` for metric-specific options
+        \\run `fmetrics <metric> --help` for metric-specific help
         \\
         \\options:
         \\  -h, --help
@@ -953,6 +950,7 @@ pub fn main(init: std.process.Init) !void {
         }
         const err = switch (metric) {
             .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
+            .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
             .ssimu2 => if (error_map) |map|
                 c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
             else

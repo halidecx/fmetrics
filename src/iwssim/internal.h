@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "../common/mem.h"
+
 #define restrict __restrict__
 
 #define IWSSIM_NSCALES 5
@@ -48,49 +50,13 @@ static const float BURT_KRNL[5] = {
     0.08838834764831845f,
 };
 
-typedef struct ImageD {
-    int width;
-    int height;
-    float *data;
-} ImageD;
-
 typedef struct Pyramid {
     ImageD bands[IWSSIM_NSCALES];
 } Pyramid;
-
-typedef struct ScratchBuffer {
-    void *data;
-    size_t size;
-    size_t offset;
-} ScratchBuffer;
-
-typedef struct ScratchMark {
-    size_t offset;
-} ScratchMark;
 
 typedef struct Enlarge2Coeff {
     int i0, i1;
     float w;
 } Enlarge2Coeff;
-
-static inline void *scratch_alloc(ScratchBuffer *const s,
-                                  const size_t byte_count)
-{
-    size_t aligned = (s->offset + 63) & ~(size_t)63;
-    if (aligned + byte_count > s->size) return NULL;
-    void *ptr = (char *)s->data + aligned;
-    s->offset = aligned + byte_count;
-    return ptr;
-}
-
-static inline ScratchMark scratch_mark(const ScratchBuffer *const s) {
-    ScratchMark m;
-    m.offset = s->offset;
-    return m;
-}
-
-static inline void scratch_reset(ScratchBuffer *const s, const ScratchMark m) {
-    if (s->offset > m.offset) s->offset = m.offset;
-}
 
 #endif /* IWSSIM_INTERNAL_H */

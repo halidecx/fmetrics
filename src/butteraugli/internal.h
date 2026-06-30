@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "../common/mem.h"
+
 #define restrict __restrict__
 
 #define W_MF_MALTA 37.0819870399
@@ -56,42 +58,12 @@ typedef struct PsychoImage {
     Image3F mf, lf;
 } PsychoImage;
 
-typedef struct ScratchBuffer {
-    void *data;
-    size_t size;
-    size_t offset;
-} ScratchBuffer;
-
-typedef struct ScratchMark {
-    size_t offset;
-} ScratchMark;
-
 typedef struct BlurKernel {
     float sigma;
     int diff, len;
     float scale;
     float k[33];
 } BlurKernel;
-
-static inline void *scratch_alloc(ScratchBuffer *const s,
-                                  const size_t byte_count)
-{
-    size_t aligned = (s->offset + 63) & ~(size_t)63;
-    if (aligned + byte_count > s->size) return NULL;
-    void *ptr = (char *)s->data + aligned;
-    s->offset = aligned + byte_count;
-    return ptr;
-}
-
-static inline ScratchMark scratch_mark(const ScratchBuffer *const s) {
-    ScratchMark m;
-    m.offset = s->offset;
-    return m;
-}
-
-static inline void scratch_reset(ScratchBuffer *const s, const ScratchMark m) {
-    if (s->offset > m.offset) s->offset = m.offset;
-}
 
 static const BlurKernel BLUR_KERNELS[] = {
     {1.2f, 2, 5, 0.343406479f,

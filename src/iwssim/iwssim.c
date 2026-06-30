@@ -23,18 +23,6 @@
 #include "../fmetrics.h"
 #include "internal.h"
 
-static bool image_alloc(ImageD *const im, const int width, const int height,
-                        ScratchBuffer *const scratch)
-{
-    if (width <= 0 || height <= 0) return false;
-    const size_t pixels = (size_t)width * (size_t)height;
-    im->data = scratch_alloc(scratch, pixels * sizeof(*im->data));
-    if (im->data == NULL) return false;
-    im->width = width;
-    im->height = height;
-    return true;
-}
-
 static void band_dimensions(const int width, const int height,
                             int band_w[IWSSIM_NSCALES],
                             int band_h[IWSSIM_NSCALES])

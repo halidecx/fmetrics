@@ -577,7 +577,7 @@ fn printUsage(metric: ?Metric) void {
         switch (m) {
             .ssimu2 => {
                 print(
-                    \\  -e, --err-map <out.pam|out.tga>
+                    \\  -e, --err-map <map.pam>
                     \\      save SSIMULACRA2 error map for image inputs
                     \\
                 , .{});
@@ -592,7 +592,7 @@ fn printUsage(metric: ?Metric) void {
                     \\      viewing-condition screen nits; default 203
                     \\  -p, --pnorm i32
                     \\      p-norm used to pool the distance map; default 2
-                    \\  -e, --err-map <out.pam|out.tga>
+                    \\  -e, --err-map <map.pam>
                     \\      save Butteraugli distance map for image inputs
                     \\
                 , .{});
@@ -672,41 +672,6 @@ fn writeErrorMapPAM(allocator: std.mem.Allocator, io: std.Io, path: []const u8, 
         bytes[i * 4 + 3] = @truncate(px >> 24);
     }
     try file.writeStreamingAll(io, bytes);
-}
-
-fn writeErrorMapTGA(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {
-    const pixels = try std.math.mul(usize, width, height);
-    if (data.len < pixels) return error.InvalidErrorMap;
-    if (width > std.math.maxInt(u16) or height > std.math.maxInt(u16)) return error.InvalidErrorMap;
-
-    var file = try std.Io.Dir.cwd().createFile(io, path, .{});
-    defer file.close(io);
-
-    var header = [_]u8{0} ** 18;
-    header[2] = 2;
-    header[12] = @truncate(width);
-    header[13] = @truncate(width >> 8);
-    header[14] = @truncate(height);
-    header[15] = @truncate(height >> 8);
-    header[16] = 32;
-    header[17] = 0x28;
-    try file.writeStreamingAll(io, &header);
-
-    const bytes = try allocator.alloc(u8, pixels * 4);
-    defer allocator.free(bytes);
-    for (data[0..pixels], 0..) |px, i| {
-        bytes[i * 4 + 0] = @truncate(px >> 16);
-        bytes[i * 4 + 1] = @truncate(px >> 8);
-        bytes[i * 4 + 2] = @truncate(px);
-        bytes[i * 4 + 3] = @truncate(px >> 24);
-    }
-    try file.writeStreamingAll(io, bytes);
-}
-
-fn writeErrorMap(allocator: std.mem.Allocator, io: std.Io, path: []const u8, data: []const u32, width: usize, height: usize) !void {
-    if (hasExtension(path, ".tga"))
-        return writeErrorMapTGA(allocator, io, path, data, width, height);
-    return writeErrorMapPAM(allocator, io, path, data, width, height);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -967,13 +932,12 @@ pub fn main(init: std.process.Init) !void {
             return error.MetricError;
         }
 
-        if (error_map_path) |path| {
+        if (error_map_path) |path|
             if (error_map) |map| {
-                try writeErrorMap(allocator, io, path, map, ref_img.width, ref_img.height);
+                try writeErrorMapPAM(allocator, io, path, map, ref_img.width, ref_img.height);
                 if (!json_output and verbose)
                     print("error_map: {s}\n", .{path});
-            }
-        }
+            };
 
         if (json_output) {
             print(

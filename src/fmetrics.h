@@ -61,6 +61,11 @@ typedef struct FmetricsImg {
     FmetricsColorspace colorspace;
 } FmetricsImg;
 
+typedef struct FmetricsButteraugliOptions {
+    float intensity_target;
+    int pnorm;
+} FmetricsButteraugliOptions;
+
 /**
  * Get error message string
  *
@@ -82,6 +87,17 @@ FmetricsErr fmetrics_ssimu2_cmp_map(const FmetricsImg *const reference,
                                     const FmetricsImg *const distorted,
                                     double *const result,
                                     uint32_t *const error_map);
+
+FmetricsErr fmetrics_butteraugli_cmp(const FmetricsImg *const reference,
+                                     const FmetricsImg *const distorted,
+                                     const FmetricsButteraugliOptions *const o,
+                                     double *const result);
+
+FmetricsErr fmetrics_butteraugli_cmp_map(const FmetricsImg *const reference,
+                                         const FmetricsImg *const distorted,
+                                         const FmetricsButteraugliOptions
+                                         *const o, double *const result,
+                                         uint32_t *const error_map);
 
 #ifdef __cplusplus
 }

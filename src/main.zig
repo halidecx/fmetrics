@@ -32,6 +32,7 @@ const VideoStats = struct {
 const Metric = enum {
     iwssim,
     ssimu2,
+    butteraugli,
     cvvdp,
 };
 
@@ -40,6 +41,11 @@ fn parseMetric(name: []const u8) ?Metric {
         return .iwssim;
     if (std.ascii.eqlIgnoreCase(name, "ssimu2") or std.ascii.eqlIgnoreCase(name, "ssimulacra2"))
         return .ssimu2;
+    if (std.ascii.eqlIgnoreCase(name, "butteraugli") or
+        std.ascii.eqlIgnoreCase(name, "butter"))
+    {
+        return .butteraugli;
+    }
     if (std.ascii.eqlIgnoreCase(name, "cvvdp") or std.ascii.eqlIgnoreCase(name, "jod"))
         return .cvvdp;
     return null;
@@ -127,6 +133,7 @@ fn metricName(metric: Metric) []const u8 {
     return switch (metric) {
         .iwssim => "iwssim",
         .ssimu2 => "ssimu2",
+        .butteraugli => "butteraugli",
         .cvvdp => "cvvdp",
     };
 }
@@ -312,6 +319,7 @@ const VideoWorker = struct {
     height: usize,
     ref_rgb: []u8,
     dis_rgb: []u8,
+    butteraugli_options: c.FmetricsButteraugliOptions,
     err: ?anyerror = null,
 
     fn init(
@@ -321,6 +329,7 @@ const VideoWorker = struct {
         metric: Metric,
         width: usize,
         height: usize,
+        butteraugli_options: c.FmetricsButteraugliOptions,
     ) !VideoWorker {
         const pixels = try std.math.mul(usize, width, height);
         return .{
@@ -332,6 +341,7 @@ const VideoWorker = struct {
             .height = height,
             .ref_rgb = try allocator.alloc(u8, pixels * 3),
             .dis_rgb = try allocator.alloc(u8, pixels * 3),
+            .butteraugli_options = butteraugli_options,
         };
     }
 
@@ -366,6 +376,7 @@ const VideoWorker = struct {
         const err = switch (self.metric) {
             .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
             .ssimu2 => c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
+            .butteraugli => c.fmetrics_butteraugli_cmp(&ref, &dis, &self.butteraugli_options, &result),
             .cvvdp => unreachable,
         };
         if (err != c.FMETRICS_OK) {
@@ -545,12 +556,35 @@ fn printUsage(metric: ?Metric) void {
         print("compare two images/videos using the {s} perceptual quality metric\n\n", .{metricName(m)});
         print("options:\n", .{});
         switch (m) {
-            .iwssim, .ssimu2 => {
+            .ssimu2 => {
                 print(
                     \\  -t, --threads u8
                     \\      task/frame thread count; default 0 (auto)
                     \\  -e, --err-map <out.pam|out.tga>
                     \\      save SSIMULACRA2 error map for image inputs
+                    \\  -v, --verbose
+                    \\      show verbose output
+                    \\  -j, --json
+                    \\      output result as JSON
+                    \\  -h, --help
+                    \\      show this help message
+                , .{});
+            },
+            .iwssim, .butteraugli => {
+                if (m == .butteraugli) {
+                    print(
+                        \\  -i, --intensity-target f32
+                        \\      viewing-condition screen nits; default 203
+                        \\  -p, --pnorm i32
+                        \\      p-norm used to pool the distance map; default 2
+                        \\  -e, --err-map <out.pam|out.tga>
+                        \\      save Butteraugli distance map for image inputs
+                        \\
+                    , .{});
+                }
+                print(
+                    \\  -t, --threads u8
+                    \\      task/frame thread count; default 0 (auto)
                     \\  -v, --verbose
                     \\      show verbose output
                     \\  -j, --json
@@ -586,6 +620,7 @@ fn printUsage(metric: ?Metric) void {
         \\metrics:
         \\  iwssim
         \\  ssimu2
+        \\  butteraugli
         \\  cvvdp
         \\
         \\run `fmetrics <metric> --help` for metric-specific options
@@ -707,6 +742,10 @@ pub fn main(init: std.process.Init) !void {
     var verbose = false;
     var json_output = false;
     var error_map_path: ?[]const u8 = null;
+    var butteraugli_options = c.FmetricsButteraugliOptions{
+        .intensity_target = 203.0,
+        .pnorm = 2,
+    };
 
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
@@ -719,8 +758,8 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--err-map") or
             std.mem.eql(u8, arg, "-e"))
         {
-            if (metric != .ssimu2) {
-                print("Error: --err-map is only valid for ssimu2\n", .{});
+            if (metric != .ssimu2 and metric != .butteraugli) {
+                print("Error: --err-map is only valid for ssimu2 or butteraugli\n", .{});
                 printUsage(metric);
                 return error.InvalidArguments;
             }
@@ -728,6 +767,48 @@ pub fn main(init: std.process.Init) !void {
                 error_map_path = map_arg;
             } else {
                 print("Error: Missing argument for -e / --err-map\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+        } else if (std.mem.eql(u8, arg, "--intensity-target") or
+            std.mem.eql(u8, arg, "-i"))
+        {
+            if (metric != .butteraugli) {
+                print("Error: --intensity-target is only valid for butteraugli\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+            if (args.next()) |intensity_arg| {
+                const intensity = try std.fmt.parseFloat(f32, intensity_arg);
+                if (intensity <= 0.0 or std.math.isNan(intensity) or
+                    std.math.isInf(intensity))
+                {
+                    print("Error: --intensity-target must be finite and positive\n", .{});
+                    return error.InvalidArguments;
+                }
+                butteraugli_options.intensity_target = intensity;
+            } else {
+                print("Error: Missing argument for --intensity-target\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+        } else if (std.mem.eql(u8, arg, "--pnorm") or
+            std.mem.eql(u8, arg, "-p"))
+        {
+            if (metric != .butteraugli) {
+                print("Error: --pnorm is only valid for butteraugli\n", .{});
+                printUsage(metric);
+                return error.InvalidArguments;
+            }
+            if (args.next()) |pnorm_arg| {
+                const pnorm = try std.fmt.parseInt(c_int, pnorm_arg, 10);
+                if (pnorm < 1) {
+                    print("Error: --pnorm must be at least 1\n", .{});
+                    return error.InvalidArguments;
+                }
+                butteraugli_options.pnorm = pnorm;
+            } else {
+                print("Error: Missing argument for --pnorm\n", .{});
                 printUsage(metric);
                 return error.InvalidArguments;
             }
@@ -876,6 +957,10 @@ pub fn main(init: std.process.Init) !void {
                 c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
             else
                 c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
+            .butteraugli => if (error_map) |map|
+                c.fmetrics_butteraugli_cmp_map(&ref, &dis, &butteraugli_options, &result, map.ptr)
+            else
+                c.fmetrics_butteraugli_cmp(&ref, &dis, &butteraugli_options, &result),
             .cvvdp => unreachable,
         };
 
@@ -907,6 +992,10 @@ pub fn main(init: std.process.Init) !void {
             if (verbose) {
                 print("width:   {d}\n", .{ref.width});
                 print("height:  {d}\n", .{ref.height});
+                if (metric == .butteraugli) {
+                    print("nits:    {d:.4}\n", .{butteraugli_options.intensity_target});
+                    print("pnorm:   {d}\n", .{butteraugli_options.pnorm});
+                }
             }
         }
         return;
@@ -1027,7 +1116,15 @@ pub fn main(init: std.process.Init) !void {
     var frame_index: usize = 0;
 
     if (parallelism == 1) {
-        var worker = try VideoWorker.init(allocator, null, &score_sink, metric, ref_dec.header.width, ref_dec.header.height);
+        var worker = try VideoWorker.init(
+            allocator,
+            null,
+            &score_sink,
+            metric,
+            ref_dec.header.width,
+            ref_dec.header.height,
+            butteraugli_options,
+        );
         defer worker.deinit();
 
         while (true) {
@@ -1071,7 +1168,15 @@ pub fn main(init: std.process.Init) !void {
         }
 
         while (workers_len < workers.len) : (workers_len += 1)
-            workers[workers_len] = try VideoWorker.init(allocator, &queue, &score_sink, metric, ref_dec.header.width, ref_dec.header.height);
+            workers[workers_len] = try VideoWorker.init(
+                allocator,
+                &queue,
+                &score_sink,
+                metric,
+                ref_dec.header.width,
+                ref_dec.header.height,
+                butteraugli_options,
+            );
 
         const spawned_count = parallelism - 1;
         var worker_threads = try allocator.alloc(std.Thread, spawned_count);
@@ -1162,6 +1267,10 @@ pub fn main(init: std.process.Init) !void {
             print("p95:     {d:.8}\n", .{stats.p95});
             print("min:     {d:.8}\n", .{stats.min});
             print("max:     {d:.8}\n", .{stats.max});
+            if (metric == .butteraugli) {
+                print("nits:    {d:.4}\n", .{butteraugli_options.intensity_target});
+                print("pnorm:   {d}\n", .{butteraugli_options.pnorm});
+            }
         }
     }
     return;

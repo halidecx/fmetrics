@@ -224,8 +224,8 @@ static double msssim_score(ImageD *const img1, ImageD *const img2,
         }
 
         const bool last = j == 4 || sx / 2 < 8 || sy / 2 < 8;
-        double contribution = (last ? ssim_sum : cs_sum) * norm;
-        if (contribution < 1e-10) contribution = 1e-10;
+        const double contribution =
+            fmax(1e-10, (last ? ssim_sum : cs_sum) * norm);
         log_msssim += weights[j] * log(contribution);
         weights_used += weights[j];
         if (last) break;
@@ -244,8 +244,8 @@ static double msssim_score(ImageD *const img1, ImageD *const img2,
     return exp(log_msssim / weights_used);
 }
 
-static size_t msssim_scratch_size(const uint32_t width, const uint32_t height) {
-    return (size_t)width * height * sizeof(float) * 9 + 4096;
+static size_t msssim_scratch_size(const uint32_t w, const uint32_t h) {
+    return (size_t)w * h * sizeof(float) * 9 + 4096;
 }
 
 FmetricsErr fmetrics_msssim_cmp(const FmetricsImg *const reference,

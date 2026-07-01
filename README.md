@@ -56,7 +56,8 @@ Reference metric implementations tested include:
 
 - Butteraugli: [libjxl](https://github.com/libjxl/libjxl)'s `butteraugli_main`
 - CVVDP: Our [fcvvdp](https://github.com/halidecx/fcvvdp)
-- IW-SSIM: None
+- IW-SSIM: A [fork](https://github.com/gianni-rosato/Python-IW-SSIM) of
+  [Python IW-SSIM](https://github.com/Jack-guo-xy/Python-IW-SSIM)
 - MS-SSIM: [libvmaf](https://github.com/netflix/vmaf)'s MS-SSIM filter via
   `ffmpeg`.
 - SSIMULACRA2:
@@ -101,7 +102,7 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 | --------------------- | -------------- | ------------- | -------------- |
 | butteraugli (p3 i203) | 4110           | 3130          | 31.5% faster   |
 | fcvvdp*               | 1390           | 1390          | 0.00%          |
-| iw_ssim               | n/a            | 255           | 0.00%          |
+| iw_ssim               | 3020           | 228           | 1228.5% faster |
 | ms_ssim**             | 1110           | 114           | 866.7% faster  |
 | ssimulacra2           | 723            | 420           | 72.1% faster   |
 
@@ -111,7 +112,7 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 | --------------------- | -------------- | ------------- | -------------- |
 | butteraugli (p3 i203) | 2440           | 1670          | -31.6%         |
 | fcvvdp*               | 1600           | 1600          | 0.00%          |
-| iw_ssim               | n/a            | 551           | 0.00%          |
+| iw_ssim               | 2660           | 551           | -79.2%         |
 | ms_ssim**             | 841            | 376           | -55.3%         |
 | ssimulacra2           | 1370           | 774           | -43.4%         |
 

@@ -706,7 +706,7 @@ pub fn main(init: std.process.Init) !void {
     var error_map_path: ?[]const u8 = null;
     var butteraugli_options = c.FmetricsButteraugliOptions{
         .intensity_target = 203.0,
-        .pnorm = 2,
+        .pnorm = 3,
     };
 
     while (args.next()) |arg| {

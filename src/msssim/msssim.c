@@ -110,8 +110,7 @@ static void convolve_h(const ImageD *const in, ImageD *const out,
 static void convolve_v(const ImageD *const in, ImageD *const out,
                        const float k[9])
 {
-    const int w = in->width;
-    const int h = in->height;
+    const int w = in->width, h = in->height;
     float kloc[5];
     for (int i = 0; i <= 4; i++) kloc[i] = k[4 + i];
     for (int y = 0; y < h; y++) {
@@ -141,10 +140,8 @@ static void blur(const ImageD *const in, ImageD *const out,
     convolve_v(tmp, out, k);
 }
 
-static void downsample_avg2(const ImageD src, ImageD *const out)
-{
-    const int ow = out->width;
-    const int oh = out->height;
+static void downsample_avg2(const ImageD src, ImageD *const out) {
+    const int ow = out->width, oh = out->height;
     for (int y = 0; y < oh; y++) {
         const int y0 = y * 2;
         const int y1 = y0 + 1 < src.height ? y0 + 1 : y0;
@@ -175,35 +172,31 @@ static double msssim_score(ImageD *const img1, ImageD *const img2,
     }
 
     const double weights[5] = { 0.0448, 0.2856, 0.3001, 0.2363, 0.1333 };
-    const float c1 = 0.0001f;
-    const float c2 = 0.0009f;
+    const float c1 = 0.0001f, c2 = 0.0009f;
     float kernel[9];
     gaussian_kernel(kernel);
 
-    double log_msssim = 0.0;
-    double weights_used = 0.0;
+    double log_msssim = 0.0, weights_used = 0.0;
     for (int j = 0; j < 5; j++) {
-        const int sx = img1->width;
-        const int sy = img1->height;
+        const int sx = img1->width, sy = img1->height;
         if (sx < 8 || sy < 8) break;
 
         blur(img1, &mu1, &tmp, kernel);
         blur(img2, &mu2, &tmp, kernel);
 
         const size_t n = (size_t)sx * sy;
-        for (size_t i = 0; i < n; i++) tmp.data[i] = img1->data[i] *
-                                                     img1->data[i];
+        for (size_t i = 0; i < n; i++)
+            tmp.data[i] = img1->data[i] * img1->data[i];
         blur(&tmp, &sigma1_sq, &mu1, kernel);
-        for (size_t i = 0; i < n; i++) tmp.data[i] = img2->data[i] *
-                                                     img2->data[i];
+        for (size_t i = 0; i < n; i++)
+            tmp.data[i] = img2->data[i] * img2->data[i];
         blur(&tmp, &sigma2_sq, &mu1, kernel);
-        for (size_t i = 0; i < n; i++) tmp.data[i] = img1->data[i] *
-                                                     img2->data[i];
+        for (size_t i = 0; i < n; i++)
+            tmp.data[i] = img1->data[i] * img2->data[i];
         blur(&tmp, &sigma12, &mu1, kernel);
         blur(img1, &mu1, &tmp, kernel);
 
-        double ssim_sum = 0.0;
-        double cs_sum = 0.0;
+        double ssim_sum = 0.0, cs_sum = 0.0;
         const double norm = 1.0 / (double)n;
         for (size_t i = 0; i < n; i++) {
             const float m1 = mu1.data[i];
@@ -230,10 +223,9 @@ static double msssim_score(ImageD *const img1, ImageD *const img2,
         weights_used += weights[j];
         if (last) break;
 
-        const ImageD src1 = *img1;
-        const ImageD src2 = *img2;
-        img1->width = (sx + 1) / 2;
-        img1->height = (sy + 1) / 2;
+        const ImageD src1 = *img1, src2 = *img2;
+        img1->width = (sx + 1) >> 1;
+        img1->height = (sy + 1) >> 1;
         img2->width = img1->width;
         img2->height = img1->height;
         downsample_avg2(src1, img1);

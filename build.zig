@@ -87,6 +87,8 @@ pub fn build(b: *std.Build) void {
     });
     lib.lto = if (flto) .full else null;
     lib.root_module.addIncludePath(b.path("."));
+    lib.root_module.linkLibrary(spng);
+    lib.root_module.linkLibrary(cvvdp);
     b.installArtifact(lib);
 
     // fmetrics.h

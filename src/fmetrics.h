@@ -75,28 +75,86 @@ typedef struct FmetricsButteraugliOptions {
  */
 const char *fmetrics_error_str(const FmetricsErr err);
 
+/**
+ * Compare two images using IW-SSIM
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param result Output IW-SSIM score
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_iwssim_cmp(const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result);
 
+/**
+ * Compare two images using MS-SSIM
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param result Output MS-SSIM score
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_msssim_cmp(const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result);
 
+/**
+ * Compare two images using SSIMULACRA2
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param result Output SSIMULACRA2 score
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_ssimu2_cmp(const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result);
 
+/**
+ * Compare two images using SSIMULACRA2 with an error map
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param result Output SSIMULACRA2 score
+ * @param error_map Output error map (width*height entries)
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_ssimu2_cmp_map(const FmetricsImg *const reference,
                                     const FmetricsImg *const distorted,
                                     double *const result,
                                     uint32_t *const error_map);
 
+/**
+ * Compare two images using Butteraugli
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param o Butteraugli options
+ * @param result Output Butteraugli score
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_butteraugli_cmp(const FmetricsImg *const reference,
                                      const FmetricsImg *const distorted,
                                      const FmetricsButteraugliOptions *const o,
                                      double *const result);
 
+/**
+ * Compare two images using Butteraugli with an error map
+ *
+ * @param reference Reference image
+ * @param distorted Distorted image
+ * @param o Butteraugli options
+ * @param result Output Butteraugli score
+ * @param error_map Output error map (width*height entries)
+ *
+ * @return FMETRICS_OK on success, error code otherwise
+ */
 FmetricsErr fmetrics_butteraugli_cmp_map(const FmetricsImg *const reference,
                                          const FmetricsImg *const distorted,
                                          const FmetricsButteraugliOptions

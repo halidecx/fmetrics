@@ -50,6 +50,41 @@ via `--err-map`, and some support additional configuration options. I/O is the
 same for all metrics, and is provided by
 [simpleimgio](https://github.com/gianni-rosato/simpleimgio).
 
+## Library Usage
+
+`libfmetrics.a` exposes a C API declared in `fmetrics.h`. To use it as a Zig
+dependency, add it to your `build.zig.zon` by running:
+
+```sh
+zig fetch --save git+https://github.com/halidecx/fmetrics.git
+```
+
+This should show something like this in `build.zig.zon`:
+
+```zig
+.dependencies = .{
+    .fmetrics = .{
+        .url = "git+https://github.com/halidecx/fmetrics.git#<commit>",
+        .hash = "fmetrics-0.0.1-<hash>",
+    },
+},
+```
+
+Then you can link it from your `build.zig`:
+
+```zig
+const fmetrics_dep = b.dependency("fmetrics", .{
+    .target = target,
+    .optimize = optimize,
+});
+const fmetrics = fmetrics_dep.artifact("fmetrics");
+exe.root_module.linkLibrary(fmetrics);
+exe.root_module.addIncludePath(fmetrics.getEmittedIncludeTree());
+```
+
+Now you can use the API from your Zig or C code. See [`fmetrics.h`](src/fmetrics.h) for the full
+API.
+
 ## Reference Comparison
 
 Reference metric implementations tested include:

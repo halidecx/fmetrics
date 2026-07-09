@@ -24,10 +24,9 @@ pub const Ssimu2Error = error{
 
 const K_SIZE = 9;
 const RADIUS = 4;
-const VEC_LEN = 8;
-const F32x8 = @Vector(VEC_LEN, f32);
-const F32x4 = @Vector(4, f32);
-const F64x4 = @Vector(4, f64);
+const VEC_LEN = std.simd.suggestVectorLength(f32) orelse 8;
+const F32Vec = @Vector(VEC_LEN, f32);
+const F64Vec = @Vector(VEC_LEN, f64);
 
 pub const Workspace = struct {
     allocator: std.mem.Allocator,
@@ -73,8 +72,16 @@ pub const Workspace = struct {
         const plane_alloc = try self.allocator.alignedAlloc(f16, .of(f16), total_floats);
 
         const wh: usize = @as(usize, width) * @as(usize, height);
-        const temp_alloc = try self.allocator.alignedAlloc(f32, .of(f32), wh * 20);
-        const scratch_alloc = try self.allocator.alignedAlloc(f32, .of(f32), width);
+        const temp_alloc = try self.allocator.alignedAlloc(
+            f32,
+            .of(f32),
+            wh * 18,
+        );
+        const scratch_alloc = try self.allocator.alignedAlloc(
+            f32,
+            .of(f32),
+            width + 64,
+        );
 
         self.width = width;
         self.height = height;
@@ -155,16 +162,25 @@ pub fn computeSsimu2(
     return computeSsimu2WithWorkspace(&workspace, reference, distorted, width, height, channels, error_map);
 }
 
-inline fn loadF32x8(src: []const f32, index: usize) F32x8 {
-    return @as(*align(1) const F32x8, @ptrCast(src.ptr + index)).*;
+inline fn loadVec(src: []const f32, index: usize) F32Vec {
+    return @as(*align(1) const F32Vec, @ptrCast(src.ptr + index)).*;
 }
 
-inline fn storeF32x8(dst: []f32, index: usize, value: F32x8) void {
-    @as(*align(1) F32x8, @ptrCast(dst.ptr + index)).* = value;
+inline fn storeVec(dst: []f32, index: usize, value: F32Vec) void {
+    @as(*align(1) F32Vec, @ptrCast(dst.ptr + index)).* = value;
 }
 
-inline fn loadF32x4(src: []const f32, index: usize) F32x4 {
-    return @as(*align(1) const F32x4, @ptrCast(src.ptr + index)).*;
+fn deinterleaveMask(comptime offset: usize) [VEC_LEN]i32 {
+    var mask: [VEC_LEN]i32 = undefined;
+    for (0..VEC_LEN) |i| {
+        const index = i * 2 + offset;
+        if (index < VEC_LEN) {
+            mask[i] = index;
+            continue;
+        }
+        mask[i] = ~@as(i32, @intCast(index - VEC_LEN));
+    }
+    return mask;
 }
 
 inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32, w: u32, h: u32) void {
@@ -173,10 +189,34 @@ inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32
         const row: usize = @as(usize, y) * stride;
         var x: usize = 0;
         while (x + VEC_LEN <= w) : (x += VEC_LEN) {
-            storeF32x8(dst, row + x, loadF32x8(src1, row + x) * loadF32x8(src2, row + x));
+            storeVec(dst, row + x, loadVec(src1, row + x) *
+                loadVec(src2, row + x));
         }
         while (x < w) : (x += 1) {
             dst[row + x] = src1[row + x] * src2[row + x];
+        }
+    }
+}
+
+inline fn addSquare(
+    src1: []const f32,
+    src2: []const f32,
+    dst: []f32,
+    stride: u32,
+    w: u32,
+    h: u32,
+) void {
+    var y: u32 = 0;
+    while (y < h) : (y += 1) {
+        const row: usize = @as(usize, y) * stride;
+        var x: usize = 0;
+        while (x + VEC_LEN <= w) : (x += VEC_LEN) {
+            const v = loadVec(src1, row + x) + loadVec(src2, row + x);
+            storeVec(dst, row + x, v * v);
+        }
+        while (x < w) : (x += 1) {
+            const v = src1[row + x] + src2[row + x];
+            dst[row + x] = v * v;
         }
     }
 }
@@ -202,13 +242,11 @@ fn blurH(srcp: []const f32, dstp: []f32, kernel: [K_SIZE]f32, w: i32) void {
     const interior_end: usize = @intCast(w - @min(w, RADIUS));
     var ju: usize = RADIUS;
     while (ju + VEC_LEN <= interior_end) : (ju += VEC_LEN) {
-        var sum = @as(F32x8, @splat(kernel[RADIUS])) * loadF32x8(srcp, ju);
-        inline for (1..RADIUS + 1) |k| {
-            const left = loadF32x8(srcp, ju - k);
-            const right = loadF32x8(srcp, ju + k);
-            sum += @as(F32x8, @splat(kernel[RADIUS + k])) * (left + right);
-        }
-        storeF32x8(dstp, ju, sum);
+        var sum: F32Vec = @splat(0.0);
+        inline for (0..K_SIZE) |k|
+            sum += @as(F32Vec, @splat(kernel[k])) *
+                loadVec(srcp, ju - RADIUS + k);
+        storeVec(dstp, ju, sum);
     }
 
     j = @intCast(ju);
@@ -244,14 +282,15 @@ fn blurH(srcp: []const f32, dstp: []f32, kernel: [K_SIZE]f32, w: i32) void {
 inline fn blurV(src: anytype, dstp: []f32, kernel: [K_SIZE]f32, w: u32) void {
     var j: usize = 0;
     while (j + VEC_LEN <= w) : (j += VEC_LEN) {
-        var accum = @as(F32x8, @splat(kernel[RADIUS])) *
-            loadF32x8(src[RADIUS], j);
-        inline for (1..RADIUS + 1) |k| {
-            const up = loadF32x8(src[RADIUS - k], j);
-            const down = loadF32x8(src[RADIUS + k], j);
-            accum += @as(F32x8, @splat(kernel[RADIUS + k])) * (up + down);
-        }
-        storeF32x8(dstp, j, accum);
+        var accum: F32Vec = @splat(0.0);
+        inline for (0..K_SIZE) |k|
+            accum = @mulAdd(
+                F32Vec,
+                @splat(kernel[k]),
+                loadVec(src[k], j),
+                accum,
+            );
+        storeVec(dstp, j, accum);
     }
     while (j < w) : (j += 1) {
         var accum: f32 = kernel[RADIUS] *
@@ -439,11 +478,32 @@ inline fn getWeight(c: i32, scale: i32, map: i32, norm: i32) f64 {
     return weight[@intCast(idx)];
 }
 
-inline fn activeWeight(plane: i32, scale: i32, map: i32) bool {
-    const w0 = @abs(getWeight(plane, scale, map, 0));
-    const w1 = @abs(getWeight(plane, scale, map, 1));
-    return @max(w0, w1) > 0.01;
-}
+const SkipInfo = struct {
+    ssim: bool,
+    artifact: bool,
+    detailloss: bool,
+
+    inline fn all(self: SkipInfo) bool {
+        return self.ssim and self.artifact and self.detailloss;
+    }
+};
+
+const skip_table: [3][6]SkipInfo = blk: {
+    var table: [3][6]SkipInfo = undefined;
+    for (0..3) |plane| {
+        for (0..6) |scale| {
+            const base = plane * 36 + scale * 6;
+            table[plane][scale] = .{
+                .ssim = weight[base] <= 0.01 and weight[base + 3] <= 0.01,
+                .artifact = weight[base + 1] <= 0.01 and
+                    weight[base + 4] <= 0.01,
+                .detailloss = weight[base + 2] <= 0.01 and
+                    weight[base + 5] <= 0.01,
+            };
+        }
+    }
+    break :blk table;
+};
 
 const K_M02 = 0.078;
 const K_M00 = 0.30;
@@ -481,6 +541,46 @@ inline fn cubeRootAndAdd(x: f32, add: f32) f32 {
     r = k1_3 * (-x * r2 * r2 + r) + r;
     r2 = r * r;
     return r2 * x + add;
+}
+
+inline fn cubeRootVec(x: F32Vec) F32Vec {
+    const k1_3: F32Vec = @splat(1.0 / 3.0);
+    const k4_3: F32Vec = @splat(4.0 / 3.0);
+    const xa_3 = k1_3 * x;
+    const m1: @Vector(VEC_LEN, i32) = @bitCast(x);
+    const zero: @Vector(VEC_LEN, i32) = @splat(0);
+    const m2 = @select(
+        i32,
+        m1 == zero,
+        zero,
+        @as(@Vector(VEC_LEN, i32), @splat(0x54800000)) -
+            (m1 >> @splat(23)) *
+                @as(@Vector(VEC_LEN, i32), @splat(0x002AAAAA)),
+    );
+    var r: F32Vec = @bitCast(m2);
+    var i: u32 = 0;
+    while (i < 3) : (i += 1) {
+        const r2 = r * r;
+        r = -xa_3 * (r2 * r2) + k4_3 * r;
+    }
+    var r2 = r * r;
+    r = k1_3 * (-x * r2 * r2 + r) + r;
+    r2 = r * r;
+    return r2 * x - @as(F32Vec, @splat(K_D1));
+}
+
+inline fn opsinVec(
+    r: F32Vec,
+    g: F32Vec,
+    b: F32Vec,
+    m0: f32,
+    m1: f32,
+    m2: f32,
+    bias: F32Vec,
+) F32Vec {
+    const mixed_b = @mulAdd(F32Vec, @splat(m2), b, bias);
+    const mixed_g = @mulAdd(F32Vec, @splat(m1), g, mixed_b);
+    return @mulAdd(F32Vec, @splat(m0), r, mixed_g);
 }
 
 inline fn opsinAbsorbance(rgb: [3]f32) [3]f32 {
@@ -535,13 +635,38 @@ inline fn xyb(src: [3][]const f32, dst: [3][]f32, idx: usize) void {
 }
 
 inline fn toXYB(srcp: [3][]const f32, dstp: [3][]f32, stride: u32, w: u32, h: u32) void {
+    const zero: F32Vec = @splat(0.0);
+    const bias: F32Vec = @splat(OPSIN_ABSORBANCE_BIAS);
     var src = srcp;
     var dst = dstp;
     var y: u32 = 0;
     while (y < h) : (y += 1) {
-        var x: u32 = 0;
-        while (x < w) : (x += 1) {
-            xyb(src, dst, @intCast(x));
+        if (w >= VEC_LEN) {
+            var x: usize = 0;
+            while (true) {
+                if (x + VEC_LEN > w) x = w - VEC_LEN;
+                const r = loadVec(src[0], x);
+                const g = loadVec(src[1], x);
+                const b = loadVec(src[2], x);
+                const ox = opsinVec(r, g, b, K_M00, K_M01, K_M02, bias);
+                const oy = opsinVec(r, g, b, K_M10, K_M11, K_M12, bias);
+                const oz = opsinVec(r, g, b, K_M20, K_M21, K_M22, bias);
+                const cx = cubeRootVec(@max(ox, zero));
+                const cy = cubeRootVec(@max(oy, zero));
+                const cz = cubeRootVec(@max(oz, zero));
+                const xv = @as(F32Vec, @splat(0.5)) * (cx - cy);
+                const yv = @as(F32Vec, @splat(0.5)) * (cx + cy);
+                storeVec(dst[0], x, xv * @as(F32Vec, @splat(14.0)) +
+                    @as(F32Vec, @splat(0.42)));
+                storeVec(dst[1], x, yv + @as(F32Vec, @splat(0.01)));
+                storeVec(dst[2], x, cz - yv +
+                    @as(F32Vec, @splat(0.55)));
+                if (x + VEC_LEN >= w) break;
+                x += VEC_LEN;
+            }
+        } else {
+            var x: usize = 0;
+            while (x < w) : (x += 1) xyb(src, dst, x);
         }
         inline for (0..3) |i| {
             src[i] = src[i][stride..];
@@ -556,8 +681,7 @@ inline fn tothe4th(y: f64) f64 {
 }
 
 inline fn ssimMap(
-    s11: []f32,
-    s22: []f32,
+    sumsquared: []f32,
     s12: []f32,
     mu1: []f32,
     mu2: []f32,
@@ -576,23 +700,34 @@ inline fn ssimMap(
         const row = y * stride;
         var x: usize = 0;
         if (error_map == null) {
-            var sum_d: F64x4 = @splat(0.0);
-            var sum_d4: F64x4 = @splat(0.0);
-            while (x + 4 <= w) : (x += 4) {
-                const m1: F64x4 = @floatCast(loadF32x4(mu1, row + x));
-                const m2: F64x4 = @floatCast(loadF32x4(mu2, row + x));
-                const s11v: F64x4 = @floatCast(loadF32x4(s11, row + x));
-                const s22v: F64x4 = @floatCast(loadF32x4(s22, row + x));
-                const s12v: F64x4 = @floatCast(loadF32x4(s12, row + x));
-
+            var sum_d: F64Vec = @splat(0.0);
+            var sum_d4: F64Vec = @splat(0.0);
+            while (x + VEC_LEN <= w) : (x += VEC_LEN) {
+                const m1 = loadVec(mu1, row + x);
+                const m2 = loadVec(mu2, row + x);
+                const sq = loadVec(sumsquared, row + x);
+                const s12v = loadVec(s12, row + x);
                 const m11 = m1 * m1;
                 const m22 = m2 * m2;
                 const m12 = m1 * m2;
                 const m_diff = m1 - m2;
-                const num_m = @as(F64x4, @splat(1.0)) - m_diff * m_diff;
-                const num_s = (s12v - m12) * @as(F64x4, @splat(2.0)) + @as(F64x4, @splat(0.0009));
-                const denom_s = (s11v - m11) + (s22v - m22) + @as(F64x4, @splat(0.0009));
-                const d = @max(@as(F64x4, @splat(1.0)) - ((num_m * num_s) / denom_s), @as(F64x4, @splat(0.0)));
+                const num_m: F64Vec = @floatCast(@mulAdd(
+                    F32Vec,
+                    m_diff,
+                    -m_diff,
+                    @as(F32Vec, @splat(1.0)),
+                ));
+                const num_s: F64Vec = @floatCast(@mulAdd(
+                    F32Vec,
+                    s12v - m12,
+                    @as(F32Vec, @splat(2.0)),
+                    @as(F32Vec, @splat(0.0009)),
+                ));
+                const denom_s: F64Vec = @floatCast(sq -
+                    @as(F32Vec, @splat(2.0)) * s12v - m11 - m22 +
+                    @as(F32Vec, @splat(0.0009)));
+                const d = @max(@as(F64Vec, @splat(1.0)) -
+                    ((num_m * num_s) / denom_s), @as(F64Vec, @splat(0.0)));
                 const d2 = d * d;
                 sum_d += d;
                 sum_d4 += d2 * d2;
@@ -609,7 +744,8 @@ inline fn ssimMap(
             const m_diff = m1 - m2;
             const num_m: f64 = @mulAdd(f32, m_diff, -m_diff, 1.0);
             const num_s: f64 = @mulAdd(f32, (@as(f32, @floatCast(s12[row + x])) - m12), 2.0, 0.0009);
-            const denom_s: f64 = (@as(f32, @floatCast(s11[row + x])) - m11) + (@as(f32, @floatCast(s22[row + x])) - m22) + 0.0009;
+            const denom_s: f64 = sumsquared[row + x] -
+                2.0 * s12[row + x] - m11 - m22 + 0.0009;
             const d1: f64 = @max(1.0 - ((num_m * num_s) / denom_s), 0.0);
             sum1[0] += d1;
             sum1[1] += tothe4th(d1);
@@ -641,25 +777,26 @@ inline fn edgeMap(
     error_map: ?[]f32,
     scale: u32,
 ) void {
-    var sum2 = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
+    var sum2 = [4]f64{ 0.0, 0.0, 0.0, 0.0 };
     var y: u32 = 0;
     while (y < h) : (y += 1) {
         const row = y * stride;
         var x: usize = 0;
         if (error_map == null) {
-            var sum_artifact: F32x8 = @splat(0.0);
-            var sum_artifact4: F32x8 = @splat(0.0);
-            var sum_lost: F32x8 = @splat(0.0);
-            var sum_lost4: F32x8 = @splat(0.0);
+            var sum_artifact: F64Vec = @splat(0.0);
+            var sum_artifact4: F64Vec = @splat(0.0);
+            var sum_lost: F64Vec = @splat(0.0);
+            var sum_lost4: F64Vec = @splat(0.0);
             while (x + VEC_LEN <= w) : (x += VEC_LEN) {
-                const im1v = loadF32x8(im1, row + x);
-                const im2v = loadF32x8(im2, row + x);
-                const mu1v = loadF32x8(mu1, row + x);
-                const mu2v = loadF32x8(mu2, row + x);
-                const one: F32x8 = @splat(1.0);
-                const zero: F32x8 = @splat(0.0);
-                const d = (one + @abs(im2v - mu2v)) /
-                    (one + @abs(im1v - mu1v)) - one;
+                const n2: F64Vec = @floatCast(@abs(
+                    loadVec(im2, row + x) - loadVec(mu2, row + x),
+                ));
+                const n1: F64Vec = @floatCast(@abs(
+                    loadVec(im1, row + x) - loadVec(mu1, row + x),
+                ));
+                const one: F64Vec = @splat(1.0);
+                const zero: F64Vec = @splat(0.0);
+                const d = (one + n2) / (one + n1) - one;
                 const artifact = @max(d, zero);
                 const detail_lost = @max(-d, zero);
                 const artifact2 = artifact * artifact;
@@ -675,8 +812,10 @@ inline fn edgeMap(
             sum2[3] += @reduce(.Add, sum_lost4);
         }
         while (x < w) : (x += 1) {
-            const d1 = (1.0 + @abs(im2[row + x] - mu2[row + x])) /
-                (1.0 + @abs(im1[row + x] - mu1[row + x])) - 1.0;
+            const d1: f64 = (1.0 +
+                @as(f64, @abs(im2[row + x] - mu2[row + x]))) /
+                (1.0 + @as(f64, @abs(im1[row + x] - mu1[row + x]))) -
+                1.0;
             const artifact = @max(d1, 0.0);
             sum2[0] += artifact;
             sum2[1] += artifact * artifact * artifact * artifact;
@@ -709,19 +848,19 @@ inline fn edgeMap(
                     2,
                     1,
                 ));
-                emap[row + x] += weight1 * @abs(artifact);
-                emap[row + x] += weight2 * @abs(artifact);
-                emap[row + x] += weight3 * @abs(detail_lost);
-                emap[row + x] += weight4 * @abs(detail_lost);
+                emap[row + x] += weight1 * @as(f32, @floatCast(@abs(artifact)));
+                emap[row + x] += weight2 * @as(f32, @floatCast(@abs(artifact)));
+                emap[row + x] += weight3 *
+                    @as(f32, @floatCast(@abs(detail_lost)));
+                emap[row + x] += weight4 *
+                    @as(f32, @floatCast(@abs(detail_lost)));
             }
         }
     }
-    plane_avg_edge[plane * 4] = one_per_pixels * @as(f64, sum2[0]);
-    plane_avg_edge[plane * 4 + 1] =
-        @sqrt(@sqrt(one_per_pixels * @as(f64, sum2[1])));
-    plane_avg_edge[plane * 4 + 2] = one_per_pixels * @as(f64, sum2[2]);
-    plane_avg_edge[plane * 4 + 3] =
-        @sqrt(@sqrt(one_per_pixels * @as(f64, sum2[3])));
+    plane_avg_edge[plane * 4] = one_per_pixels * sum2[0];
+    plane_avg_edge[plane * 4 + 1] = @sqrt(@sqrt(one_per_pixels * sum2[1]));
+    plane_avg_edge[plane * 4 + 2] = one_per_pixels * sum2[2];
+    plane_avg_edge[plane * 4 + 3] = @sqrt(@sqrt(one_per_pixels * sum2[3]));
 }
 
 inline fn score(plane_avg_ssim: [6][6]f64, plane_avg_edge: [6][12]f64) f64 {
@@ -761,6 +900,8 @@ inline fn downscale(src: [3][]f32, dst: [3][]f32, src_stride: u32, in_w: u32, in
     const out_h = @divTrunc((in_h + uscale - 1), uscale);
     const dst_stride = @divTrunc((src_stride + uscale - 1), uscale);
     const normalize: f32 = 1.0 / (fscale * fscale);
+    const norm: F32Vec = @splat(normalize);
+    const full_w = in_w / 2;
 
     var plane: u32 = 0;
     while (plane < 3) : (plane += 1) {
@@ -769,6 +910,23 @@ inline fn downscale(src: [3][]f32, dst: [3][]f32, src_stride: u32, in_w: u32, in
         var oy: u32 = 0;
         while (oy < out_h) : (oy += 1) {
             var ox: u32 = 0;
+            if (oy * 2 + 1 < in_h) {
+                const row0 = srcp[oy * 2 * src_stride ..];
+                const row1 = srcp[(oy * 2 + 1) * src_stride ..];
+                while (ox + VEC_LEN <= full_w) : (ox += VEC_LEN) {
+                    const a0 = loadVec(row0, ox * 2);
+                    const b0 = loadVec(row0, ox * 2 + VEC_LEN);
+                    const a1 = loadVec(row1, ox * 2);
+                    const b1 = loadVec(row1, ox * 2 + VEC_LEN);
+                    const even_mask = comptime deinterleaveMask(0);
+                    const odd_mask = comptime deinterleaveMask(1);
+                    const e0 = @shuffle(f32, a0, b0, even_mask);
+                    const o0 = @shuffle(f32, a0, b0, odd_mask);
+                    const e1 = @shuffle(f32, a1, b1, even_mask);
+                    const o1 = @shuffle(f32, a1, b1, odd_mask);
+                    storeVec(dstp, ox, ((e0 + o0) + e1 + o1) * norm);
+                }
+            }
             while (ox < out_w) : (ox += 1) {
                 var sum: f32 = 0.0;
                 var iy: u32 = 0;
@@ -798,9 +956,17 @@ fn process(
 ) f64 {
     const wh: u32 = stride * h;
     const error_map_count: u32 = if (error_map != null) 2 else 0; // error_accum and error_scale
-    const temp_alloc = allocator.alignedAlloc(f32, .of(f32), wh * (18 + error_map_count)) catch unreachable;
+    const temp_alloc = allocator.alignedAlloc(
+        f32,
+        .of(f32),
+        wh * (16 + error_map_count),
+    ) catch unreachable;
     defer allocator.free(temp_alloc);
-    const scratch = allocator.alignedAlloc(f32, .of(f32), stride) catch unreachable;
+    const scratch = allocator.alignedAlloc(
+        f32,
+        .of(f32),
+        stride + 64,
+    ) catch unreachable;
     defer allocator.free(scratch);
 
     return processWithScratch(srcp1, srcp2, stride, w, h, error_map, temp_alloc, scratch);
@@ -818,19 +984,29 @@ fn processWithScratch(
 ) f64 {
     const wh: u32 = stride * h;
     const error_map_count: u32 = if (error_map != null) 2 else 0; // error_accum and error_scale
-    const required: usize = @as(usize, wh) * @as(usize, 18 + error_map_count);
+    const required: usize = @as(usize, wh) *
+        @as(usize, 16 + error_map_count);
     std.debug.assert(temp.len >= required);
-    std.debug.assert(scratch.len >= stride);
+    std.debug.assert(scratch.len >= stride + 64);
     var temp_use = temp[0..required];
 
-    var temp6x3: [6][3][]f32 = undefined;
+    var temp4x3: [4][3][]f32 = undefined;
     var x: u32 = 0;
-    for (0..6) |i| {
+    for (0..4) |i| {
         for (0..3) |ii| {
-            temp6x3[i][ii] = temp_use[x..(x + wh)];
+            temp4x3[i][ii] = temp_use[x..(x + wh)];
             x += wh;
         }
     }
+
+    const tmpp3 = temp_use[x..(x + wh)];
+    x += wh;
+    const tmpsq = temp_use[x..(x + wh)];
+    x += wh;
+    const tmpps12 = temp_use[x..(x + wh)];
+    x += wh;
+    const tmppmu1 = temp_use[x..(x + wh)];
+    x += wh;
 
     var error_accum: []f32 = undefined;
     var error_scale: []f32 = undefined;
@@ -842,16 +1018,10 @@ fn processWithScratch(
         @memset(error_scale, 0.0);
     }
 
-    const srcp1b = temp6x3[0];
-    const srcp2b = temp6x3[1];
-    const tmpp1 = temp6x3[2];
-    const tmpp2 = temp6x3[3];
-
-    const tmpp3 = temp6x3[4][0];
-    const tmpps11 = temp6x3[4][1];
-    const tmpps22 = temp6x3[4][2];
-    const tmpps12 = temp6x3[5][0];
-    const tmppmu1 = temp6x3[5][1];
+    const srcp1b = temp4x3[0];
+    const srcp2b = temp4x3[1];
+    const tmpp1 = temp4x3[2];
+    const tmpp2 = temp4x3[3];
 
     inline for (0..3) |i| {
         for (srcp1[i], 0..) |v, j|
@@ -889,17 +1059,16 @@ fn processWithScratch(
         toXYB(srcp2b, tmpp2, stride2, w2, h2);
 
         for (0..3) |plane| {
-            const ssim_on = activeWeight(@intCast(plane), @intCast(scale), 0);
-            const edge_on = activeWeight(@intCast(plane), @intCast(scale), 1) or
-                activeWeight(@intCast(plane), @intCast(scale), 2);
+            const skip = skip_table[plane][scale];
+            if (skip.all()) continue;
+            const ssim_on = !skip.ssim;
+            const edge_on = !skip.artifact or !skip.detailloss;
 
             if (ssim_on) {
-                multiply(tmpp1[plane], tmpp1[plane], tmpp3, stride2, w2, h2);
-                blur(tmpp3, tmpps11, stride2, w2, h2, scratch);
-                multiply(tmpp2[plane], tmpp2[plane], tmpp3, stride2, w2, h2);
-                blur(tmpp3, tmpps22, stride2, w2, h2, scratch);
                 multiply(tmpp1[plane], tmpp2[plane], tmpp3, stride2, w2, h2);
                 blur(tmpp3, tmpps12, stride2, w2, h2, scratch);
+                addSquare(tmpp1[plane], tmpp2[plane], tmpp3, stride2, w2, h2);
+                blur(tmpp3, tmpsq, stride2, w2, h2, scratch);
             }
 
             if (ssim_on or edge_on) {
@@ -909,8 +1078,7 @@ fn processWithScratch(
 
             if (ssim_on)
                 ssimMap(
-                    tmpps11,
-                    tmpps22,
+                    tmpsq,
                     tmpps12,
                     tmppmu1,
                     tmpp3,

@@ -139,7 +139,7 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 | fcvvdp*               | 1390           | 1390          | 0.00%          |
 | iw_ssim               | 3020           | 228           | 1228.5% faster |
 | ms_ssim**             | 1110           | 114           | 866.7% faster  |
-| ssimulacra2           | 723            | 420           | 72.1% faster   |
+| ssimulacra2           | 722            | 232           | 211.4% faster  |
 
 #### RAM Usage (MB)
 
@@ -149,7 +149,7 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 | fcvvdp*               | 1600           | 1600          | 0.00%          |
 | iw_ssim               | 2660           | 551           | -79.2%         |
 | ms_ssim**             | 841            | 376           | -55.3%         |
-| ssimulacra2           | 1370           | 774           | -43.4%         |
+| ssimulacra2           | 1370           | 741           | -45.8%         |
 
 > \*Note: fmetrics uses the fcvvdp library (as a Zig module) with different I/O,
 > so the underlying metric implementation is the same.

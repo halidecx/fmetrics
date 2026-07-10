@@ -9,7 +9,7 @@ It includes a CLI tool, `fmetrics`.
 - Never remove existing comments.
 - Single line `if` statements in C wherever possible.
 - Fewer lines of code is always better.
-- Maximum line length of 80 characters.
+- Maximum line length of 80 characters for C; `zig fmt <file>` for Zig.
 - **Never** delete the `zig-out` directory.
 
 ## Compilation

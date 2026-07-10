@@ -46,6 +46,15 @@ pub fn build(b: *std.Build) void {
     const cvvdp = fcvvdp_dep.artifact("cvvdp");
     cvvdp.lto = if (flto) .full else null;
 
+    // fmetrics
+    const fmetrics_module = b.addModule("fmetrics", .{
+        .root_source_file = b.path("src/fmetrics.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    fmetrics_module.addIncludePath(b.path("src"));
+
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("c_imports.h"),
         .target = target,
@@ -108,6 +117,7 @@ pub fn build(b: *std.Build) void {
     });
     bin.root_module.addOptions("build_opts", options);
     bin.root_module.addImport("c", c_module);
+    bin.root_module.addImport("fmetrics", fmetrics_module);
     bin.root_module.addImport("simpleimgio", simpleimgio);
     bin.root_module.addIncludePath(b.path("."));
     bin.root_module.linkLibrary(lib);

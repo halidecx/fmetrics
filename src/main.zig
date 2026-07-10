@@ -14,6 +14,7 @@
 // limitations under the License.
 const std = @import("std");
 const c = @import("c");
+const fmetrics = @import("fmetrics");
 const imgio = @import("simpleimgio");
 
 const print = std.debug.print;
@@ -36,6 +37,26 @@ const Metric = enum {
     butteraugli,
     cvvdp,
 };
+
+fn fmetricsImage(rgb: []const u8, width: usize, height: usize) !fmetrics.Image {
+    return fmetrics.Image.init(rgb, @intCast(width), @intCast(height));
+}
+
+fn compareFmetrics(metric: Metric, reference: fmetrics.Image, distorted: fmetrics.Image, options: fmetrics.ButteraugliOptions, error_map: ?[]u32) !f64 {
+    return switch (metric) {
+        .iwssim => fmetrics.iwssim(reference, distorted),
+        .msssim => fmetrics.msssim(reference, distorted),
+        .ssimu2 => if (error_map) |map|
+            fmetrics.ssimu2Map(reference, distorted, map)
+        else
+            fmetrics.ssimu2(reference, distorted),
+        .butteraugli => if (error_map) |map|
+            fmetrics.butteraugliMap(reference, distorted, options, map)
+        else
+            fmetrics.butteraugli(reference, distorted, options),
+        .cvvdp => unreachable,
+    };
+}
 
 fn parseMetric(name: []const u8) ?Metric {
     if (std.ascii.eqlIgnoreCase(name, "iwssim") or std.ascii.eqlIgnoreCase(name, "iw-ssim"))
@@ -323,7 +344,7 @@ const VideoWorker = struct {
     height: usize,
     ref_rgb: []u8,
     dis_rgb: []u8,
-    butteraugli_options: c.FmetricsButteraugliOptions,
+    butteraugli_options: fmetrics.ButteraugliOptions,
     err: ?anyerror = null,
 
     fn init(
@@ -333,7 +354,7 @@ const VideoWorker = struct {
         metric: Metric,
         width: usize,
         height: usize,
-        butteraugli_options: c.FmetricsButteraugliOptions,
+        butteraugli_options: fmetrics.ButteraugliOptions,
     ) !VideoWorker {
         const pixels = try std.math.mul(usize, width, height);
         return .{
@@ -358,36 +379,14 @@ const VideoWorker = struct {
         try yuv420ToRgb8Into(self.allocator, self.ref_rgb, ref_frame);
         try yuv420ToRgb8Into(self.allocator, self.dis_rgb, dis_frame);
 
-        var ref = c.FmetricsImg{
-            .data = self.ref_rgb.ptr,
-            .width = @intCast(self.width),
-            .height = @intCast(self.height),
-            .stride = @intCast(self.width * 3),
-            .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-            .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-        };
-
-        var dis = c.FmetricsImg{
-            .data = self.dis_rgb.ptr,
-            .width = @intCast(self.width),
-            .height = @intCast(self.height),
-            .stride = @intCast(self.width * 3),
-            .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-            .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-        };
-
-        var result: f64 = undefined;
-        const err = switch (self.metric) {
-            .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
-            .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
-            .ssimu2 => c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
-            .butteraugli => c.fmetrics_butteraugli_cmp(&ref, &dis, &self.butteraugli_options, &result),
-            .cvvdp => unreachable,
-        };
-        if (err != c.FMETRICS_OK) {
-            print("Error: {s} frame processing failed: {s}\n", .{ metricName(self.metric), c.fmetrics_error_str(err) });
+        const ref = try fmetricsImage(self.ref_rgb, self.width, self.height);
+        const dis = try fmetricsImage(self.dis_rgb, self.width, self.height);
+        const result = compareFmetrics(self.metric, ref, dis, self.butteraugli_options, null) catch |err| {
+            print("Error: {s} frame processing failed: {s}\n", .{
+                metricName(self.metric), fmetrics.errorString(err),
+            });
             return error.MetricError;
-        }
+        };
 
         try self.scores.append(self.allocator, result);
     }
@@ -677,7 +676,7 @@ fn writeErrorMapPAM(allocator: std.mem.Allocator, io: std.Io, path: []const u8, 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
-    print("\x1b[38;5;117mfmetrics\x1b[0m by Halide Compression, LLC | {s}\n", .{c.fmetrics_version_str()});
+    print("\x1b[38;5;117mfmetrics\x1b[0m by Halide Compression, LLC | {s}\n", .{fmetrics.version});
 
     var args = std.process.Args.iterate(init.minimal.args);
     _ = args.next();
@@ -704,7 +703,7 @@ pub fn main(init: std.process.Init) !void {
     var verbose = false;
     var json_output = false;
     var error_map_path: ?[]const u8 = null;
-    var butteraugli_options = c.FmetricsButteraugliOptions{
+    var butteraugli_options = fmetrics.ButteraugliOptions{
         .intensity_target = 203.0,
         .pnorm = 3,
     };
@@ -900,23 +899,8 @@ pub fn main(init: std.process.Init) !void {
                 return;
             }
         } else {
-            var ref = c.FmetricsImg{
-                .data = ref_rgb.ptr,
-                .width = @intCast(ref_img.width),
-                .height = @intCast(ref_img.height),
-                .stride = @intCast(ref_img.width * 3),
-                .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-                .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-            };
-
-            var dis = c.FmetricsImg{
-                .data = dis_rgb.ptr,
-                .width = @intCast(dis_img.width),
-                .height = @intCast(dis_img.height),
-                .stride = @intCast(dis_img.width * 3),
-                .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-                .colorspace = c.FMETRICS_COLORSPACE_SRGB,
-            };
+            const ref = try fmetricsImage(ref_rgb, ref_img.width, ref_img.height);
+            const dis = try fmetricsImage(dis_rgb, dis_img.width, dis_img.height);
 
             var error_map: ?[]u32 = null;
             defer if (error_map) |map| allocator.free(map);
@@ -928,38 +912,13 @@ pub fn main(init: std.process.Init) !void {
                 );
                 error_map = try allocator.alloc(u32, pixels);
             }
-            const err = switch (metric) {
-                .iwssim => c.fmetrics_iwssim_cmp(&ref, &dis, &result),
-                .msssim => c.fmetrics_msssim_cmp(&ref, &dis, &result),
-                .ssimu2 => if (error_map) |map|
-                    c.fmetrics_ssimu2_cmp_map(&ref, &dis, &result, map.ptr)
-                else
-                    c.fmetrics_ssimu2_cmp(&ref, &dis, &result),
-                .butteraugli => if (error_map) |map|
-                    c.fmetrics_butteraugli_cmp_map(
-                        &ref,
-                        &dis,
-                        &butteraugli_options,
-                        &result,
-                        map.ptr,
-                    )
-                else
-                    c.fmetrics_butteraugli_cmp(
-                        &ref,
-                        &dis,
-                        &butteraugli_options,
-                        &result,
-                    ),
-                .cvvdp => unreachable,
-            };
-
-            if (err != c.FMETRICS_OK) {
+            result = compareFmetrics(metric, ref, dis, butteraugli_options, error_map) catch |err| {
                 print(
                     "Error: {s} comparison failed: {s}\n",
-                    .{ metricName(metric), c.fmetrics_error_str(err) },
+                    .{ metricName(metric), fmetrics.errorString(err) },
                 );
                 return error.MetricError;
-            }
+            };
 
             if (error_map_path) |path|
                 if (error_map) |map| {

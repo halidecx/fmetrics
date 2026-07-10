@@ -82,8 +82,28 @@ exe.root_module.linkLibrary(fmetrics);
 exe.root_module.addIncludePath(fmetrics.getEmittedIncludeTree());
 ```
 
-Now you can use the API from your Zig or C code. See [`fmetrics.h`](src/fmetrics.h) for the full
-API.
+Zig projects can also import the native Zig API:
+
+```zig
+const fmetrics_dep = b.dependency("fmetrics", .{
+    .target = target,
+    .optimize = optimize,
+});
+const fmetrics = fmetrics_dep.module("fmetrics");
+exe.root_module.addImport("fmetrics", fmetrics);
+exe.root_module.linkLibrary(fmetrics_dep.artifact("fmetrics"));
+```
+
+```zig
+const fmetrics = @import("fmetrics");
+
+const reference = try fmetrics.Image.init(reference_rgb, width, height);
+const distorted = try fmetrics.Image.init(distorted_rgb, width, height);
+const score = try fmetrics.msssim(reference, distorted);
+```
+
+See [`src/fmetrics.zig`](src/fmetrics.zig) for the full Zig API. C projects may
+use [`fmetrics.h`](src/fmetrics.h).
 
 ## Reference Comparison
 

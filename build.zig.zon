@@ -1,6 +1,6 @@
 .{
     .name = .fmetrics,
-    .version = "0.0.1",
+    .version = "0.0.2",
     .dependencies = .{
         .spng = .{
             .url = "git+https://github.com/allyourcodebase/libspng.git#8858232bde47083739c3e25f676093423610ec5e",

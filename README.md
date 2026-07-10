@@ -28,7 +28,7 @@ zig-out
 `fmetrics` binary usage:
 
 ```
-fmetrics by Halide Compression, LLC | 0.0.1
+fmetrics by Halide Compression, LLC | [version]
 
 usage: fmetrics <metric> [options] <reference> <distorted>
 
@@ -65,7 +65,7 @@ This should show something like this in `build.zig.zon`:
 .dependencies = .{
     .fmetrics = .{
         .url = "git+https://github.com/halidecx/fmetrics.git#<commit>",
-        .hash = "fmetrics-0.0.1-<hash>",
+        .hash = "fmetrics-<version>-<hash>",
     },
 },
 ```

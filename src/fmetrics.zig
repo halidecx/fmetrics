@@ -18,7 +18,7 @@ const c = @cImport({
 });
 const ssimu2_impl = @import("ssimulacra2/ssimulacra2.zig");
 
-pub const version = "0.0.1";
+pub const version = "0.0.2";
 
 pub const Error = error{
     InvalidArgument,

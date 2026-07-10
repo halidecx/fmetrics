@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) void {
 
     // 'libfmetrics.a' static lib
     const lib = b.addLibrary(.{
-        .name = "fmetrics",
+        .name = "libfmetrics",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/zig_to_c.zig"),
             .target = target,

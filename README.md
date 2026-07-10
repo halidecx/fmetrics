@@ -91,7 +91,7 @@ const fmetrics_dep = b.dependency("fmetrics", .{
 });
 const fmetrics = fmetrics_dep.module("fmetrics");
 exe.root_module.addImport("fmetrics", fmetrics);
-exe.root_module.linkLibrary(fmetrics_dep.artifact("fmetrics"));
+exe.root_module.linkLibrary(fmetrics_dep.artifact("libfmetrics"));
 ```
 
 ```zig

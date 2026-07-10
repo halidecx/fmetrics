@@ -115,7 +115,7 @@ references. Here, we just report the Spearman Rank Correlation Coefficient
 | butteraugli (p3 i203)* | 0.7929           | 0.7863          | -0.83%         |
 | fcvvdp**               | 0.8274           | 0.8286          | +0.15%         |
 | iw_ssim                | n/a              | 0.7925          | +0.00%         |
-| ms_ssim                | 0.7845           | 0.8044          | +2.54%         |
+| ms_ssim                | 0.7845           | 0.8048          | +2.59%         |
 | ssimulacra2            | 0.8916           | 0.8910          | -0.07%         |
 
 > \*Note: Because Butteraugli is a smaller-is-better metric, the signs are
@@ -135,21 +135,21 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 
 | metric                | ms (reference) | ms (fmetrics) | difference (%) |
 | --------------------- | -------------- | ------------- | -------------- |
-| butteraugli (p3 i203) | 4110           | 3130          | 31.5% faster   |
+| butteraugli (p3 i203) | 4110           | 3130          | 31.31% faster  |
 | fcvvdp*               | 1390           | 1390          | 0.00%          |
-| iw_ssim               | 3020           | 228           | 1228.5% faster |
-| ms_ssim**             | 1110           | 114           | 866.7% faster  |
-| ssimulacra2           | 722            | 232           | 211.4% faster  |
+| iw_ssim               | 3020           | 228           | 1224.6% faster |
+| ms_ssim**             | 1110           | 106           | 947.2% faster  |
+| ssimulacra2           | 722            | 232           | 211.2% faster  |
 
 #### RAM Usage (MB)
 
 | metric                | MB (reference) | MB (fmetrics) | difference (%) |
 | --------------------- | -------------- | ------------- | -------------- |
-| butteraugli (p3 i203) | 2440           | 1670          | -31.6%         |
+| butteraugli (p3 i203) | 2440           | 1670          | -31.56%        |
 | fcvvdp*               | 1600           | 1600          | 0.00%          |
-| iw_ssim               | 2660           | 551           | -79.2%         |
-| ms_ssim**             | 841            | 376           | -55.3%         |
-| ssimulacra2           | 1370           | 741           | -45.8%         |
+| iw_ssim               | 2660           | 551           | -79.29%        |
+| ms_ssim**             | 841            | 376           | -55.29%        |
+| ssimulacra2           | 1370           | 741           | -45.91%        |
 
 > \*Note: fmetrics uses the fcvvdp library (as a Zig module) with different I/O,
 > so the underlying metric implementation is the same.

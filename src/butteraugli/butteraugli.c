@@ -773,31 +773,22 @@ static bool mask_img(ImageF *m0, ImageF *m1, ImageF *mask,
                      ImageF *diff_ac, ScratchBuffer *s)
 {
     const ScratchMark mark = scratch_mark(s);
-    ImageF d0 = {0}, b0 = {0}, b1 = {0};
     const size_t x = m0->x, y = m0->y;
-    if (!img_alloc(&d0, x, y, s, false) ||
-        !img_alloc(&b0, x, y, s, false) ||
-        !img_alloc(&b1, x, y, s, false))
-    {
-        scratch_reset(s, mark);
-        return false;
-    }
     for (size_t i = 0; i < x * y; i++) {
         m0->p[i] = diff_pre_val(m0->p[i]);
         m1->p[i] = diff_pre_val(m1->p[i]);
     }
-    if (!blur(m0, 2.7f, &b0, s) || !blur(m1, 2.7f, &b1, s)) {
+    if (!blur(m0, 2.7f, m0, s) || !blur(m1, 2.7f, m1, s)) {
         scratch_reset(s, mark);
         return false;
     }
-    fuzzy_erosion(&b0, &d0);
     for (size_t i = 0; i < x * y; i++) {
-        mask->p[i] = d0.p[i];
         if (diff_ac != NULL) {
-            const float d = b0.p[i] - b1.p[i];
+            const float d = m0->p[i] - m1->p[i];
             diff_ac->p[i] += 10.0f * d * d;
         }
     }
+    fuzzy_erosion(m0, mask);
     scratch_reset(s, mark);
     return true;
 }

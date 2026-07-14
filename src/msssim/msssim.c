@@ -251,35 +251,30 @@ static size_t msssim_scratch_size(const uint32_t w, const uint32_t h) {
            (size_t)w * sizeof(float) + 4096;
 }
 
-FmetricsErr fmetrics_msssim_cmp(const FmetricsImg *const reference,
+FmetricsErr fmetrics_msssim_cmp(FmetricsWorkspace *const workspace,
+                                const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result)
 {
     const FmetricsErr valid = validate_pair(reference, distorted, result);
     if (valid != FMETRICS_OK) return valid;
+    if (workspace == NULL) return FMETRICS_ERR_INVALID_ARGUMENT;
 
     const size_t scratch_size = msssim_scratch_size(reference->width,
                                                    reference->height);
-    ScratchBuffer scratch;
-    scratch.data = malloc(scratch_size);
-    if (scratch.data == NULL) return FMETRICS_ERR_OUT_OF_MEMORY;
-    scratch.size = scratch_size;
-    scratch.offset = 0;
+    if (!workspace_reserve(workspace, scratch_size))
+        return FMETRICS_ERR_OUT_OF_MEMORY;
+    ScratchBuffer *const scratch = &workspace->scratch;
 
     ImageD img1 = {0}, img2 = {0};
-    if (!load_luma(reference, &img1, &scratch) ||
-        !load_luma(distorted, &img2, &scratch))
+    if (!load_luma(reference, &img1, scratch) ||
+        !load_luma(distorted, &img2, scratch))
     {
-        free(scratch.data);
         return FMETRICS_ERR_OUT_OF_MEMORY;
     }
 
-    const double score = msssim_score(&img1, &img2, &scratch);
-    if (isnan(score)) {
-        free(scratch.data);
-        return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
+    const double score = msssim_score(&img1, &img2, scratch);
+    if (isnan(score)) return FMETRICS_ERR_OUT_OF_MEMORY;
     *result = fclip(score, 0.0, 1.0);
-    free(scratch.data);
     return FMETRICS_OK;
 }

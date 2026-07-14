@@ -102,6 +102,31 @@ pub fn computeSsimu2WithWorkspace(
     channels: u32,
     error_map: ?[]u32,
 ) Ssimu2Error!f64 {
+    try workspace.ensureCapacity(width, height);
+    return computeSsimu2WithBuffers(
+        reference,
+        distorted,
+        width,
+        height,
+        channels,
+        error_map,
+        workspace.planes,
+        workspace.temp,
+        workspace.scratch,
+    );
+}
+
+pub fn computeSsimu2WithBuffers(
+    reference: []const u8,
+    distorted: []const u8,
+    width: u32,
+    height: u32,
+    channels: u32,
+    error_map: ?[]u32,
+    planes: []f16,
+    temp: []f32,
+    scratch: []f32,
+) Ssimu2Error!f64 {
     if (channels != 3 and channels != 4) return Ssimu2Error.InvalidChannelCount;
 
     const pixels = @as(usize, width) * @as(usize, height);
@@ -109,20 +134,21 @@ pub fn computeSsimu2WithWorkspace(
 
     std.debug.assert(reference.len >= expected_len);
     std.debug.assert(distorted.len >= expected_len);
-
-    try workspace.ensureCapacity(width, height);
+    std.debug.assert(planes.len >= pixels * 6);
+    std.debug.assert(temp.len >= pixels * 18);
+    std.debug.assert(scratch.len >= width + 64);
 
     var ref_planes: [3][]f16 = undefined;
     var dist_planes: [3][]f16 = undefined;
     {
         var off: usize = 0;
         inline for (0..3) |i| {
-            ref_planes[i] = workspace.planes[off .. off + workspace.plane_size];
-            off += workspace.plane_size;
+            ref_planes[i] = planes[off .. off + pixels];
+            off += pixels;
         }
         inline for (0..3) |i| {
-            dist_planes[i] = workspace.planes[off .. off + workspace.plane_size];
-            off += workspace.plane_size;
+            dist_planes[i] = planes[off .. off + pixels];
+            off += pixels;
         }
     }
 
@@ -139,12 +165,12 @@ pub fn computeSsimu2WithWorkspace(
     return processWithScratch(
         ref_const,
         dist_const,
-        workspace.stride,
+        width,
         width,
         height,
         error_map,
-        workspace.temp,
-        workspace.scratch,
+        temp,
+        scratch,
     );
 }
 

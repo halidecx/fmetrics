@@ -16,7 +16,6 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("fmetrics.h");
 });
-const ssimu2_impl = @import("ssimulacra2/ssimulacra2.zig");
 
 pub const version = "0.0.2";
 
@@ -84,6 +83,19 @@ pub const ButteraugliOptions = struct {
     pnorm: i32 = 3,
 };
 
+pub const Workspace = struct {
+    handle: *c.FmetricsWorkspace,
+
+    pub fn init() !Workspace {
+        return .{ .handle = c.fmetrics_workspace_create() orelse return error.OutOfMemory };
+    }
+
+    pub fn deinit(self: *Workspace) void {
+        c.fmetrics_workspace_destroy(self.handle);
+        self.* = undefined;
+    }
+};
+
 fn errorFromC(err: c.FmetricsErr) !void {
     if (err == c.FMETRICS_OK) return;
     return switch (err) {
@@ -125,84 +137,49 @@ fn validateMap(image: Image, map: []u32) !void {
     if (map.len < pixels) return error.InvalidArgument;
 }
 
-pub fn iwssim(reference: Image, distorted: Image) !f64 {
+pub fn iwssim(workspace: *Workspace, reference: Image, distorted: Image) !f64 {
     try validatePair(reference, distorted);
     var ref = reference.asCImage();
     var dist = distorted.asCImage();
     var result: f64 = undefined;
-    try errorFromC(c.fmetrics_iwssim_cmp(&ref, &dist, &result));
+    try errorFromC(c.fmetrics_iwssim_cmp(
+        workspace.handle,
+        &ref,
+        &dist,
+        &result,
+    ));
     return result;
 }
 
-pub fn msssim(reference: Image, distorted: Image) !f64 {
+pub fn msssim(workspace: *Workspace, reference: Image, distorted: Image) !f64 {
     try validatePair(reference, distorted);
     var ref = reference.asCImage();
     var dist = distorted.asCImage();
     var result: f64 = undefined;
-    try errorFromC(c.fmetrics_msssim_cmp(&ref, &dist, &result));
+    try errorFromC(c.fmetrics_msssim_cmp(
+        workspace.handle,
+        &ref,
+        &dist,
+        &result,
+    ));
     return result;
 }
 
-const PackedImage = struct {
-    data: []const u8,
-    owned: ?[]u8,
-};
-
-fn packedImage(allocator: std.mem.Allocator, image: Image) !PackedImage {
-    const row_bytes = std.math.mul(usize, image.width, 3) catch
-        return error.InvalidArgument;
-    const len = std.math.mul(usize, row_bytes, image.height) catch
-        return error.InvalidArgument;
-    if (image.stride == row_bytes)
-        return .{ .data = image.data[0..len], .owned = null };
-
-    const data = allocator.alloc(u8, len) catch return error.OutOfMemory;
-    errdefer allocator.free(data);
-    for (0..image.height) |y| {
-        const src_offset = y * image.stride;
-        const dst_offset = y * row_bytes;
-        @memcpy(data[dst_offset..][0..row_bytes], image.data[src_offset..][0..row_bytes]);
-    }
-    return .{ .data = data, .owned = data };
-}
-
-pub fn ssimu2(reference: Image, distorted: Image) !f64 {
+pub fn ssimu2(workspace: *Workspace, reference: Image, distorted: Image) !f64 {
     try validatePair(reference, distorted);
     var ref = reference.asCImage();
     var dist = distorted.asCImage();
     var result: f64 = undefined;
-    try errorFromC(c.fmetrics_ssimu2_cmp(&ref, &dist, &result));
+    try errorFromC(c.fmetrics_ssimu2_cmp(
+        workspace.handle,
+        &ref,
+        &dist,
+        &result,
+    ));
     return result;
 }
 
-pub fn ssimu2WithAllocator(allocator: std.mem.Allocator, reference: Image, distorted: Image) !f64 {
-    return ssimu2WithAllocatorAndMap(allocator, reference, distorted, null);
-}
-
-pub fn ssimu2WithAllocatorAndMap(allocator: std.mem.Allocator, reference: Image, distorted: Image, error_map: ?[]u32) !f64 {
-    try validatePair(reference, distorted);
-    if (error_map) |map| try validateMap(reference, map);
-
-    const ref = packedImage(allocator, reference) catch |err| return err;
-    defer if (ref.owned) |data| allocator.free(data);
-    const dist = packedImage(allocator, distorted) catch |err| return err;
-    defer if (dist.owned) |data| allocator.free(data);
-
-    return ssimu2_impl.computeSsimu2(
-        allocator,
-        ref.data,
-        dist.data,
-        reference.width,
-        reference.height,
-        3,
-        error_map,
-    ) catch |err| switch (err) {
-        error.InvalidChannelCount => error.InvalidArgument,
-        error.OutOfMemory => error.OutOfMemory,
-    };
-}
-
-pub fn butteraugli(reference: Image, distorted: Image, options: ButteraugliOptions) !f64 {
+pub fn butteraugli(workspace: *Workspace, reference: Image, distorted: Image, options: ButteraugliOptions) !f64 {
     try validatePair(reference, distorted);
     var ref = reference.asCImage();
     var dist = distorted.asCImage();
@@ -212,6 +189,7 @@ pub fn butteraugli(reference: Image, distorted: Image, options: ButteraugliOptio
     };
     var result: f64 = undefined;
     try errorFromC(c.fmetrics_butteraugli_cmp(
+        workspace.handle,
         &ref,
         &dist,
         &c_options,
@@ -220,13 +198,14 @@ pub fn butteraugli(reference: Image, distorted: Image, options: ButteraugliOptio
     return result;
 }
 
-pub fn ssimu2Map(reference: Image, distorted: Image, error_map: []u32) !f64 {
+pub fn ssimu2Map(workspace: *Workspace, reference: Image, distorted: Image, error_map: []u32) !f64 {
     try validatePair(reference, distorted);
     try validateMap(reference, error_map);
     var ref = reference.asCImage();
     var dist = distorted.asCImage();
     var result: f64 = undefined;
     try errorFromC(c.fmetrics_ssimu2_cmp_map(
+        workspace.handle,
         &ref,
         &dist,
         &result,
@@ -235,7 +214,7 @@ pub fn ssimu2Map(reference: Image, distorted: Image, error_map: []u32) !f64 {
     return result;
 }
 
-pub fn butteraugliMap(reference: Image, distorted: Image, options: ButteraugliOptions, error_map: []u32) !f64 {
+pub fn butteraugliMap(workspace: *Workspace, reference: Image, distorted: Image, options: ButteraugliOptions, error_map: []u32) !f64 {
     try validatePair(reference, distorted);
     try validateMap(reference, error_map);
     var ref = reference.asCImage();
@@ -246,6 +225,7 @@ pub fn butteraugliMap(reference: Image, distorted: Image, options: ButteraugliOp
     };
     var result: f64 = undefined;
     try errorFromC(c.fmetrics_butteraugli_cmp_map(
+        workspace.handle,
         &ref,
         &dist,
         &c_options,

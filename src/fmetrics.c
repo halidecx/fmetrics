@@ -15,6 +15,24 @@
  * limitations under the License.
  */
 #include "fmetrics.h"
+#include "common/mem.h"
+
+FmetricsWorkspace *fmetrics_workspace_create(void) {
+    return calloc(1, sizeof(FmetricsWorkspace));
+}
+
+void fmetrics_workspace_destroy(FmetricsWorkspace *const workspace) {
+    if (workspace == NULL) return;
+    free(workspace->scratch.data);
+    free(workspace);
+}
+
+void *fmetrics_workspace_reserve_data(FmetricsWorkspace *const workspace,
+                                      const size_t size)
+{
+    if (!workspace_reserve(workspace, size)) return NULL;
+    return workspace->scratch.data;
+}
 
 const char *fmetrics_error_str(const FmetricsErr err) {
     switch (err) {

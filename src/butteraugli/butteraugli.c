@@ -986,13 +986,6 @@ static size_t butteraugli_scratch_size(const size_t x, const size_t y) {
     return x * y * sizeof(float) * 128;
 }
 
-static bool scratch_init(ScratchBuffer *s, const size_t size) {
-    s->data = malloc(size);
-    s->size = size;
-    s->offset = 0;
-    return s->data != NULL;
-}
-
 static bool load_rgb(const FmetricsImg *src, Image3F *dst, ScratchBuffer *s) {
     if (!img3_alloc(dst, src->width, src->height, s, false)) return false;
     for (uint32_t y = 0; y < src->height; y++) {
@@ -1016,67 +1009,56 @@ static void make_map(const ImageF *dm, uint32_t *map) {
     }
 }
 
-FmetricsErr fmetrics_butteraugli_cmp_map(const FmetricsImg *const reference,
-                                         const FmetricsImg *const distorted,
-                                         const FmetricsButteraugliOptions
-                                         *const o, double *const result,
-                                         uint32_t *const error_map)
+static FmetricsErr butteraugli_cmp(const FmetricsImg *const reference,
+                                   const FmetricsImg *const distorted,
+                                   const FmetricsButteraugliOptions *const o,
+                                   double *const result,
+                                   uint32_t *const error_map,
+                                   const bool output_map,
+                                   FmetricsWorkspace *const workspace)
 {
     const FmetricsErr err = validate(reference, distorted, o, result);
     if (err != FMETRICS_OK) return err;
-    if (error_map == NULL) return FMETRICS_ERR_INVALID_ARGUMENT;
-    ScratchBuffer scratch;
-    if (!scratch_init(&scratch, butteraugli_scratch_size(reference->width,
-                                                        reference->height)))
+    if (workspace == NULL || (output_map && error_map == NULL))
+        return FMETRICS_ERR_INVALID_ARGUMENT;
+    if (!workspace_reserve(workspace,
+                           butteraugli_scratch_size(reference->width,
+                                                   reference->height)))
     {
         return FMETRICS_ERR_OUT_OF_MEMORY;
     }
+    ScratchBuffer *const scratch = &workspace->scratch;
     Image3F r = {0}, d = {0};
     ImageF dm = {0};
-    if (!load_rgb(reference, &r, &scratch) ||
-        !load_rgb(distorted, &d, &scratch) ||
-        !img_alloc(&dm, reference->width, reference->height, &scratch, false))
+    if (!load_rgb(reference, &r, scratch) ||
+        !load_rgb(distorted, &d, scratch) ||
+        !img_alloc(&dm, reference->width, reference->height, scratch, false))
     {
-        free(scratch.data);
         return FMETRICS_ERR_OUT_OF_MEMORY;
     }
-    if (!butter_diffmap(&r, &d, o->intensity_target, &dm, &scratch)) {
-        free(scratch.data);
+    if (!butter_diffmap(&r, &d, o->intensity_target, &dm, scratch))
         return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
     *result = pnorm_score(&dm, o->pnorm);
-    make_map(&dm, error_map);
-    free(scratch.data);
+    if (error_map != NULL) make_map(&dm, error_map);
     return FMETRICS_OK;
 }
 
-FmetricsErr fmetrics_butteraugli_cmp(const FmetricsImg *const reference,
+FmetricsErr fmetrics_butteraugli_cmp(FmetricsWorkspace *const workspace,
+                                     const FmetricsImg *const reference,
                                      const FmetricsImg *const distorted,
                                      const FmetricsButteraugliOptions *const o,
                                      double *const result)
 {
-    const FmetricsErr err = validate(reference, distorted, o, result);
-    if (err != FMETRICS_OK) return err;
-    ScratchBuffer scratch;
-    if (!scratch_init(&scratch, butteraugli_scratch_size(reference->width,
-                                                        reference->height)))
-    {
-        return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
-    Image3F r = {0}, d = {0};
-    ImageF dm = {0};
-    if (!load_rgb(reference, &r, &scratch) ||
-        !load_rgb(distorted, &d, &scratch) ||
-        !img_alloc(&dm, reference->width, reference->height, &scratch, false))
-    {
-        free(scratch.data);
-        return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
-    if (!butter_diffmap(&r, &d, o->intensity_target, &dm, &scratch)) {
-        free(scratch.data);
-        return FMETRICS_ERR_OUT_OF_MEMORY;
-    }
-    *result = pnorm_score(&dm, o->pnorm);
-    free(scratch.data);
-    return FMETRICS_OK;
+    return butteraugli_cmp(reference, distorted, o, result, NULL, false,
+                           workspace);
+}
+
+FmetricsErr fmetrics_butteraugli_cmp_map(
+    FmetricsWorkspace *const workspace, const FmetricsImg *const reference,
+    const FmetricsImg *const distorted,
+    const FmetricsButteraugliOptions *const o, double *const result,
+    uint32_t *const error_map)
+{
+    return butteraugli_cmp(reference, distorted, o, result, error_map, true,
+                          workspace);
 }

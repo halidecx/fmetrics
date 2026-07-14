@@ -42,18 +42,18 @@ fn fmetricsImage(rgb: []const u8, width: usize, height: usize) !fmetrics.Image {
     return fmetrics.Image.init(rgb, @intCast(width), @intCast(height));
 }
 
-fn compareFmetrics(metric: Metric, reference: fmetrics.Image, distorted: fmetrics.Image, options: fmetrics.ButteraugliOptions, error_map: ?[]u32) !f64 {
+fn compareFmetrics(metric: Metric, workspace: *fmetrics.Workspace, reference: fmetrics.Image, distorted: fmetrics.Image, options: fmetrics.ButteraugliOptions, error_map: ?[]u32) !f64 {
     return switch (metric) {
-        .iwssim => fmetrics.iwssim(reference, distorted),
-        .msssim => fmetrics.msssim(reference, distorted),
+        .iwssim => fmetrics.iwssim(workspace, reference, distorted),
+        .msssim => fmetrics.msssim(workspace, reference, distorted),
         .ssimu2 => if (error_map) |map|
-            fmetrics.ssimu2Map(reference, distorted, map)
+            fmetrics.ssimu2Map(workspace, reference, distorted, map)
         else
-            fmetrics.ssimu2(reference, distorted),
+            fmetrics.ssimu2(workspace, reference, distorted),
         .butteraugli => if (error_map) |map|
-            fmetrics.butteraugliMap(reference, distorted, options, map)
+            fmetrics.butteraugliMap(workspace, reference, distorted, options, map)
         else
-            fmetrics.butteraugli(reference, distorted, options),
+            fmetrics.butteraugli(workspace, reference, distorted, options),
         .cvvdp => unreachable,
     };
 }
@@ -345,6 +345,7 @@ const VideoWorker = struct {
     ref_rgb: []u8,
     dis_rgb: []u8,
     butteraugli_options: fmetrics.ButteraugliOptions,
+    workspace: fmetrics.Workspace,
     err: ?anyerror = null,
 
     fn init(
@@ -357,6 +358,12 @@ const VideoWorker = struct {
         butteraugli_options: fmetrics.ButteraugliOptions,
     ) !VideoWorker {
         const pixels = try std.math.mul(usize, width, height);
+        const ref_rgb = try allocator.alloc(u8, pixels * 3);
+        errdefer allocator.free(ref_rgb);
+        const dis_rgb = try allocator.alloc(u8, pixels * 3);
+        errdefer allocator.free(dis_rgb);
+        var workspace = try fmetrics.Workspace.init();
+        errdefer workspace.deinit();
         return .{
             .allocator = allocator,
             .queue = queue,
@@ -364,13 +371,15 @@ const VideoWorker = struct {
             .metric = metric,
             .width = width,
             .height = height,
-            .ref_rgb = try allocator.alloc(u8, pixels * 3),
-            .dis_rgb = try allocator.alloc(u8, pixels * 3),
+            .ref_rgb = ref_rgb,
+            .dis_rgb = dis_rgb,
             .butteraugli_options = butteraugli_options,
+            .workspace = workspace,
         };
     }
 
     fn deinit(self: *VideoWorker) void {
+        self.workspace.deinit();
         self.allocator.free(self.ref_rgb);
         self.allocator.free(self.dis_rgb);
     }
@@ -381,7 +390,7 @@ const VideoWorker = struct {
 
         const ref = try fmetricsImage(self.ref_rgb, self.width, self.height);
         const dis = try fmetricsImage(self.dis_rgb, self.width, self.height);
-        const result = compareFmetrics(self.metric, ref, dis, self.butteraugli_options, null) catch |err| {
+        const result = compareFmetrics(self.metric, &self.workspace, ref, dis, self.butteraugli_options, null) catch |err| {
             print("Error: {s} frame processing failed: {s}\n", .{
                 metricName(self.metric), fmetrics.errorString(err),
             });
@@ -916,7 +925,9 @@ pub fn main(init: std.process.Init) !void {
                 );
                 error_map = try allocator.alloc(u32, pixels);
             }
-            result = compareFmetrics(metric, ref, dis, butteraugli_options, error_map) catch |err| {
+            var workspace = try fmetrics.Workspace.init();
+            defer workspace.deinit();
+            result = compareFmetrics(metric, &workspace, ref, dis, butteraugli_options, error_map) catch |err| {
                 print(
                     "Error: {s} comparison failed: {s}\n",
                     .{ metricName(metric), fmetrics.errorString(err) },

@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
 
@@ -37,6 +38,24 @@ typedef struct ScratchBuffer {
 typedef struct ScratchMark {
     size_t offset;
 } ScratchMark;
+
+struct FmetricsWorkspace {
+    ScratchBuffer scratch;
+};
+
+static inline bool workspace_reserve(struct FmetricsWorkspace *const w,
+                                     const size_t size)
+{
+    if (w == NULL) return false;
+    if (w->scratch.size < size) {
+        void *const data = realloc(w->scratch.data, size);
+        if (data == NULL) return false;
+        w->scratch.data = data;
+        w->scratch.size = size;
+    }
+    w->scratch.offset = 0;
+    return true;
+}
 
 static inline void *scratch_alloc(ScratchBuffer *const s,
                                   const size_t byte_count)

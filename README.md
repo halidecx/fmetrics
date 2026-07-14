@@ -99,7 +99,9 @@ const fmetrics = @import("fmetrics");
 
 const reference = try fmetrics.Image.init(reference_rgb, width, height);
 const distorted = try fmetrics.Image.init(distorted_rgb, width, height);
-const score = try fmetrics.msssim(reference, distorted);
+var workspace = try fmetrics.Workspace.init();
+defer workspace.deinit();
+const score = try fmetrics.msssim(&workspace, reference, distorted);
 ```
 
 See [`src/fmetrics.zig`](src/fmetrics.zig) for the full Zig API. C projects may

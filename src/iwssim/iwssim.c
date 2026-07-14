@@ -1162,41 +1162,36 @@ static FmetricsErr iwssim_score_luma(const ImageD *const reference,
     return FMETRICS_OK;
 }
 
-FmetricsErr fmetrics_iwssim_cmp(const FmetricsImg *const reference,
+FmetricsErr fmetrics_iwssim_cmp(FmetricsWorkspace *const workspace,
+                                const FmetricsImg *const reference,
                                 const FmetricsImg *const distorted,
                                 double *const result)
 {
     if (result == NULL) return FMETRICS_ERR_INVALID_ARGUMENT;
     const FmetricsErr valid = validate_image_pair(reference, distorted);
     if (valid != FMETRICS_OK) return valid;
+    if (workspace == NULL) return FMETRICS_ERR_INVALID_ARGUMENT;
 
     const size_t scratch_size =
         iwssim_scratch_size(reference->width, reference->height);
-    ScratchBuffer scratch;
-    scratch.data = malloc(scratch_size);
-    if (scratch.data == NULL) return FMETRICS_ERR_OUT_OF_MEMORY;
-    scratch.size = scratch_size;
-    scratch.offset = 0;
+    if (!workspace_reserve(workspace, scratch_size))
+        return FMETRICS_ERR_OUT_OF_MEMORY;
+    ScratchBuffer *const scratch = &workspace->scratch;
 
     ImageD ref_luma = {0}, dis_luma = {0};
     FmetricsErr err = FMETRICS_OK;
 
-    if (!rgb_to_luma(reference, &ref_luma, &scratch) ||
-        !rgb_to_luma(distorted, &dis_luma, &scratch)) {
+    if (!rgb_to_luma(reference, &ref_luma, scratch) ||
+        !rgb_to_luma(distorted, &dis_luma, scratch)) {
         err = FMETRICS_ERR_OUT_OF_MEMORY;
-        free(scratch.data);
         return err;
     }
 
     double score = 0.0;
-    err = iwssim_score_luma(&ref_luma, &dis_luma, &score, &scratch);
-    if (err != FMETRICS_OK) {
-        free(scratch.data);
-        return err;
-    }
+    err = iwssim_score_luma(&ref_luma, &dis_luma, &score, scratch);
+    if (err != FMETRICS_OK) return err;
 
     *result = fclip(score, 0.0, 1.0);
 
-    free(scratch.data);
     return err;
 }

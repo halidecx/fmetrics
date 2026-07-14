@@ -65,6 +65,14 @@ typedef struct BlurKernel {
     float k[33];
 } BlurKernel;
 
+typedef float Float4 __attribute__((vector_size(16)));
+typedef int32_t Int4 __attribute__((vector_size(16)));
+
+typedef union Vec4 {
+    Float4 f;
+    Int4 i;
+} Vec4;
+
 static const BlurKernel BLUR_KERNELS[] = {
     {1.2f, 2, 5, 0.343406479f,
      {0.249352209f, 0.706648278f, 1.0f, 0.706648278f, 0.249352209f}},

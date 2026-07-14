@@ -676,35 +676,96 @@ static void store_min3(float v, float *m0, float *m1, float *m2) {
     }
 }
 
-static void fuzzy_erosion(const ImageF *restrict from, ImageF *restrict to) {
+static Float4 load4(const float *p) {
+    Float4 v;
+    memcpy(&v, p, sizeof(v));
+    return v;
+}
+
+static void store4(float *const p, const Float4 v) {
+    memcpy(p, &v, sizeof(v));
+}
+
+static Float4 select4(const Int4 m, const Float4 a, const Float4 b) {
+    const Vec4 mask = {.i = m}, av = {.f = a}, bv = {.f = b};
+    const Vec4 v = {.i = (mask.i & av.i) | (~mask.i & bv.i)};
+    return v.f;
+}
+
+static void store_min3x4(const Float4 v, Float4 *const m0, Float4 *const m1,
+                         Float4 *const m2)
+{
+    const Float4 a = *m0, b = *m1, c = *m2;
+    const Int4 take = ~(v >= c), lt0 = take & (v < a);
+    const Int4 lt1 = take & ~lt0 & (v < b);
+    const Int4 last = take & ~lt0 & ~lt1;
+    *m0 = select4(lt0, v, a);
+    *m1 = select4(lt0, a, select4(lt1, v, b));
+    *m2 = select4(lt0, b, select4(lt1, b, select4(last, v, c)));
+}
+
+static float fuzzy_erosion_pixel(const ImageF *from, const size_t x,
+                                 const size_t y)
+{
     const int st = 3;
-    for (size_t y = 0; y < from->y; y++) {
-        for (size_t x = 0; x < from->x; x++) {
-            float m0 = pixz(from, (int)x, (int)y), m1 = 2 * m0, m2 = m1;
-            if (x >= (size_t)st) {
-                store_min3(pixz(from, (int)x - st, (int)y), &m0, &m1, &m2);
-                if (y >= (size_t)st)
-                    store_min3(pixz(from, (int)x - st, (int)y - st),
-                               &m0, &m1, &m2);
-                if (y < from->y - (size_t)st)
-                    store_min3(pixz(from, (int)x - st, (int)y + st),
-                               &m0, &m1, &m2);
+    float m0 = pixz(from, (int)x, (int)y), m1 = 2 * m0, m2 = m1;
+    if (x >= (size_t)st) {
+        store_min3(pixz(from, (int)x - st, (int)y), &m0, &m1, &m2);
+        if (y >= (size_t)st)
+            store_min3(pixz(from, (int)x - st, (int)y - st),
+                       &m0, &m1, &m2);
+        if (y < from->y - (size_t)st)
+            store_min3(pixz(from, (int)x - st, (int)y + st),
+                       &m0, &m1, &m2);
+    }
+    if (x < from->x - (size_t)st) {
+        store_min3(pixz(from, (int)x + st, (int)y), &m0, &m1, &m2);
+        if (y >= (size_t)st)
+            store_min3(pixz(from, (int)x + st, (int)y - st),
+                       &m0, &m1, &m2);
+        if (y < from->y - (size_t)st)
+            store_min3(pixz(from, (int)x + st, (int)y + st),
+                       &m0, &m1, &m2);
+    }
+    if (y >= (size_t)st)
+        store_min3(pixz(from, (int)x, (int)y - st), &m0, &m1, &m2);
+    if (y < from->y - (size_t)st)
+        store_min3(pixz(from, (int)x, (int)y + st), &m0, &m1, &m2);
+    return 0.45f * m0 + 0.3f * m1 + 0.25f * m2;
+}
+
+static void fuzzy_erosion(const ImageF *restrict from, ImageF *restrict to) {
+    const size_t st = 3, width = from->x, height = from->y;
+    for (size_t y = 0; y < height; y++) {
+        size_t x = 0;
+        if (y >= st && y + st < height && width > 2 * st) {
+            for (; x < st; x++)
+                to->p[y * width + x] = fuzzy_erosion_pixel(from, x, y);
+            for (; x + 4 <= width - st; x += 4) {
+                Float4 m0 = load4(from->p + y * width + x);
+                Float4 m1 = 2.0f * m0, m2 = m1;
+                store_min3x4(load4(from->p + y * width + x - st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y - st) * width + x - st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y + st) * width + x - st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + y * width + x + st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y - st) * width + x + st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y + st) * width + x + st),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y - st) * width + x),
+                             &m0, &m1, &m2);
+                store_min3x4(load4(from->p + (y + st) * width + x),
+                             &m0, &m1, &m2);
+                store4(to->p + y * width + x,
+                       0.45f * m0 + 0.3f * m1 + 0.25f * m2);
             }
-            if (x < from->x - (size_t)st) {
-                store_min3(pixz(from, (int)x + st, (int)y), &m0, &m1, &m2);
-                if (y >= (size_t)st)
-                    store_min3(pixz(from, (int)x + st, (int)y - st),
-                               &m0, &m1, &m2);
-                if (y < from->y - (size_t)st)
-                    store_min3(pixz(from, (int)x + st, (int)y + st),
-                               &m0, &m1, &m2);
-            }
-            if (y >= (size_t)st)
-                store_min3(pixz(from, (int)x, (int)y - st), &m0, &m1, &m2);
-            if (y < from->y - (size_t)st)
-                store_min3(pixz(from, (int)x, (int)y + st), &m0, &m1, &m2);
-            to->p[y * from->x + x] = 0.45f * m0 + 0.3f * m1 + 0.25f * m2;
         }
+        for (; x < width; x++)
+            to->p[y * width + x] = fuzzy_erosion_pixel(from, x, y);
     }
 }
 

@@ -155,7 +155,7 @@ lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
 
 | metric                | ms (reference) | ms (fmetrics) | difference (%) |
 | --------------------- | -------------- | ------------- | -------------- |
-| butteraugli (p3 i203) | 4110           | 3130          | 31.31% faster  |
+| butteraugli (p3 i203) | 4110           | 2480          | 65.73% faster  |
 | fcvvdp*               | 1390           | 1390          | 0.00%          |
 | iw_ssim               | 3020           | 228           | 1224.6% faster |
 | ms_ssim**             | 1110           | 106           | 947.2% faster  |

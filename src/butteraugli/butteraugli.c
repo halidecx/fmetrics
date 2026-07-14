@@ -467,65 +467,93 @@ static float malta_unit(const ImageF *d, int x, int y, const bool lf) {
     return ret;
 }
 
+static inline float malta_sum5(const float a, const float b, const float c,
+                               const float d, const float e)
+{
+    const float s = a + b + c + d + e;
+    return s * s;
+}
+
+static inline float malta_sum7(const float a, const float b, const float c,
+                               const float d, const float e, const float f,
+                               const float g)
+{
+    const float s = a + b + c + d + e + f + g;
+    return s * s;
+}
+
+static inline float malta_sum9(const float a, const float b, const float c,
+                               const float d, const float e, const float f,
+                               const float g, const float h, const float i)
+{
+    const float s = a + b + c + d + e + f + g + h + i;
+    return s * s;
+}
+
 static float malta_unit_inner(const ImageF *d, const int x, const int y,
                               const bool lf)
 {
-    static const int off_lf[][18] = {
-        {-4, 0,-2, 0, 0, 0, 2, 0, 4, 0},
-        { 0,-4, 0,-2, 0, 0, 0, 2, 0, 4},
-        {-3,-3,-2,-2, 0, 0, 2, 2, 3, 3},
-        { 3,-3, 2,-2, 0, 0,-2, 2,-3, 3},
-        { 1,-4, 1,-2, 0, 0,-1, 2,-1, 4},
-        {-1,-4,-1,-2, 0, 0, 1, 2, 1, 4},
-        {-4,-1,-2,-1, 0, 0, 2, 1, 4, 1},
-        {-4, 1,-2, 1, 0, 0, 2,-1, 4,-1},
-        {-2,-3,-1,-2, 0, 0, 1, 2, 2, 3},
-        { 2,-3, 1,-2, 0, 0,-1, 2,-2, 3},
-        {-3,-2,-2,-1, 0, 0, 2, 1, 3, 2},
-        { 3,-2, 2,-1, 0, 0,-2, 1,-3, 2},
-        {-4, 2,-2, 1, 0, 0, 2,-1, 4,-2},
-        {-4,-2,-2,-1, 0, 0, 2, 1, 4, 2},
-        {-2,-4,-1,-2, 0, 0, 1, 2, 2, 4},
-        { 2,-4, 1,-2, 0, 0,-1, 2,-2, 4},
-    };
-    static const int off[][18] = {
-        {-4, 0,-3, 0,-2, 0,-1, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0},
-        { 0,-4, 0,-3, 0,-2, 0,-1, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4},
-        {-3,-3,-2,-2,-1,-1, 0, 0, 1, 1, 2, 2, 3, 3},
-        { 3,-3, 2,-2, 1,-1, 0, 0,-1, 1,-2, 2,-3, 3},
-        { 1,-4, 1,-3, 1,-2, 0,-1, 0, 0, 0, 1,-1, 2,-1, 3,-1, 4},
-        {-1,-4,-1,-3,-1,-2, 0,-1, 0, 0, 0, 1, 1, 2, 1, 3, 1, 4},
-        {-4,-1,-3,-1,-2,-1,-1, 0, 0, 0, 1, 0, 2, 1, 3, 1, 4, 1},
-        {-4, 1,-3, 1,-2, 1,-1, 0, 0, 0, 1, 0, 2,-1, 3,-1, 4,-1},
-        {-2,-3,-1,-2,-1,-1, 0, 0, 1, 1, 1, 2, 2, 3},
-        { 2,-3, 1,-2, 1,-1, 0, 0,-1, 1,-1, 2,-2, 3},
-        {-3,-2,-2,-1,-1,-1, 0, 0, 1, 1, 2, 1, 3, 2},
-        { 3,-2, 2,-1, 1,-1, 0, 0,-1, 1,-2, 1,-3, 2},
-        {-4, 1,-3, 1,-2, 1,-1, 0, 0, 0, 1, 0, 2,-1, 3,-1, 4,-1},
-        {-4,-1,-3,-1,-2,-1,-1, 0, 0, 0, 1, 0, 2, 1, 3, 1, 4, 1},
-        {-1,-4,-1,-3,-1,-2, 0,-1, 0, 0, 0, 1, 1, 2, 1, 3, 1, 4},
-        { 1,-4, 1,-3, 1,-2, 0,-1, 0, 0, 0, 1,-1, 2,-1, 3,-1, 4},
-    };
     float ret = 0.0f;
     const size_t stride = d->x;
     const float *p = d->p + (size_t)y * stride + (size_t)x;
+    const float *rm4 = p - 4 * stride;
+    const float *rm3 = p - 3 * stride;
+    const float *rm2 = p - 2 * stride;
+    const float *rm1 = p - stride;
+    const float *rp1 = p + stride;
+    const float *rp2 = p + 2 * stride;
+    const float *rp3 = p + 3 * stride;
+    const float *rp4 = p + 4 * stride;
     if (lf) {
-        for (int i = 0; i < 16; i++) {
-            float s = 0.0f;
-            const int *o = off_lf[i];
-            for (int j = 0; j < 5; j++)
-                s += p[o[2 * j + 1] * (int)stride + o[2 * j]];
-            ret += s * s;
-        }
+        ret += malta_sum5(p[-4], p[-2], p[0], p[2], p[4]);
+        ret += malta_sum5(rm4[0], rm2[0], p[0], rp2[0], rp4[0]);
+        ret += malta_sum5(rm3[-3], rm2[-2], p[0], rp2[2], rp3[3]);
+        ret += malta_sum5(rm3[3], rm2[2], p[0], rp2[-2], rp3[-3]);
+        ret += malta_sum5(rm4[1], rm2[1], p[0], rp2[-1], rp4[-1]);
+        ret += malta_sum5(rm4[-1], rm2[-1], p[0], rp2[1], rp4[1]);
+        ret += malta_sum5(rm1[-4], rm1[-2], p[0], rp1[2], rp1[4]);
+        ret += malta_sum5(rp1[-4], rp1[-2], p[0], rm1[2], rm1[4]);
+        ret += malta_sum5(rm3[-2], rm2[-1], p[0], rp2[1], rp3[2]);
+        ret += malta_sum5(rm3[2], rm2[1], p[0], rp2[-1], rp3[-2]);
+        ret += malta_sum5(rm2[-3], rm1[-2], p[0], rp1[2], rp2[3]);
+        ret += malta_sum5(rm2[3], rm1[2], p[0], rp1[-2], rp2[-3]);
+        ret += malta_sum5(rp2[-4], rp1[-2], p[0], rm1[2], rm2[4]);
+        ret += malta_sum5(rm2[-4], rm1[-2], p[0], rp1[2], rp2[4]);
+        ret += malta_sum5(rm4[-2], rm2[-1], p[0], rp2[1], rp4[2]);
+        ret += malta_sum5(rm4[2], rm2[1], p[0], rp2[-1], rp4[-2]);
     } else {
-        for (int i = 0; i < 16; i++) {
-            float s = 0.0f;
-            const int *o = off[i];
-            const int cnt = i < 8 ? 9 : 7;
-            for (int j = 0; j < cnt; j++)
-                s += p[o[2 * j + 1] * (int)stride + o[2 * j]];
-            ret += s * s;
-        }
+        ret += malta_sum9(p[-4], p[-3], p[-2], p[-1], p[0], p[1],
+                          p[2], p[3], p[4]);
+        ret += malta_sum9(rm4[0], rm3[0], rm2[0], rm1[0], p[0], rp1[0],
+                          rp2[0], rp3[0], rp4[0]);
+        ret += malta_sum9(rm3[-3], rm2[-2], rm1[-1], p[0], rp1[1],
+                          rp2[2], rp3[3], p[0], p[0]);
+        ret += malta_sum9(rm3[3], rm2[2], rm1[1], p[0], rp1[-1],
+                          rp2[-2], rp3[-3], p[0], p[0]);
+        ret += malta_sum9(rm4[1], rm3[1], rm2[1], rm1[0], p[0], rp1[0],
+                          rp2[-1], rp3[-1], rp4[-1]);
+        ret += malta_sum9(rm4[-1], rm3[-1], rm2[-1], rm1[0], p[0],
+                          rp1[0], rp2[1], rp3[1], rp4[1]);
+        ret += malta_sum9(rm1[-4], rm1[-3], rm1[-2], p[-1], p[0], p[1],
+                          rp1[2], rp1[3], rp1[4]);
+        ret += malta_sum9(rp1[-4], rp1[-3], rp1[-2], p[-1], p[0], p[1],
+                          rm1[2], rm1[3], rm1[4]);
+        ret += malta_sum7(rm3[-2], rm2[-1], rm1[-1], p[0], rp1[1],
+                          rp2[1], rp3[2]);
+        ret += malta_sum7(rm3[2], rm2[1], rm1[1], p[0], rp1[-1],
+                          rp2[-1], rp3[-2]);
+        ret += malta_sum7(rm2[-3], rm1[-2], rm1[-1], p[0], rp1[1],
+                          rp1[2], rp2[3]);
+        ret += malta_sum7(rm2[3], rm1[2], rm1[1], p[0], rp1[-1],
+                          rp1[-2], rp2[-3]);
+        ret += malta_sum7(rp1[-4], rp1[-3], rp1[-2], p[-1], p[0], p[1],
+                          rm1[2]);
+        ret += malta_sum7(rm1[-4], rm1[-3], rm1[-2], p[-1], p[0], p[1],
+                          rp1[2]);
+        ret += malta_sum7(rm4[-1], rm3[-1], rm2[-1], rm1[0], p[0],
+                          rp1[0], rp2[1]);
+        ret += malta_sum7(rm4[1], rm3[1], rm2[1], rm1[0], p[0], rp1[0],
+                          rp2[-1]);
     }
     return ret;
 }

@@ -462,8 +462,12 @@ fn hasExtension(path: []const u8, ext: []const u8) bool {
 fn yuv420ToRgb8Into(allocator: std.mem.Allocator, rgb: []u8, frame: imgio.YuvFrame) !void {
     if (frame.chroma != .yuv420) return error.UnsupportedY4MChroma;
 
-    var eight = try frame.to8Bit(allocator);
-    defer eight.deinit(allocator);
+    var converted: ?imgio.YuvFrame = null;
+    defer if (converted) |*eight| eight.deinit(allocator);
+    const eight = if (frame.bit_depth == .b8) frame else blk: {
+        converted = try frame.to8Bit(allocator);
+        break :blk converted.?;
+    };
 
     const width = eight.width;
     const height = eight.height;
@@ -1133,7 +1137,7 @@ pub fn main(init: std.process.Init) !void {
                 frame_index += 1;
             }
         } else {
-            const queue_capacity = @max(32, parallelism * 4);
+            const queue_capacity = @max(4, parallelism);
             var queue = try VideoQueue.init(allocator, io, queue_capacity);
             defer queue.deinit();
 
@@ -1155,7 +1159,7 @@ pub fn main(init: std.process.Init) !void {
                     butteraugli_options,
                 );
 
-            const spawned_count = parallelism - 1;
+            const spawned_count = parallelism;
             var worker_threads = try allocator.alloc(std.Thread, spawned_count);
             var spawned_len: usize = 0;
             defer allocator.free(worker_threads);
@@ -1210,7 +1214,6 @@ pub fn main(init: std.process.Init) !void {
             }
 
             _ = queue.push(.{ .is_end = true });
-            workers[spawned_count].worker();
 
             for (worker_threads[0..spawned_len]) |thread| thread.join();
             spawned_len = 0;

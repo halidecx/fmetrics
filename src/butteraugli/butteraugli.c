@@ -286,58 +286,6 @@ static float diff_pre_val(const float v) {
     return sqrtf(mul * fabsf(v) + bias) - 8.83812822207f;
 }
 
-static bool blur_diff_pre(const ImageF *in, ImageF *out, ScratchBuffer *s) {
-    const ScratchMark mark = scratch_mark(s);
-    const BlurKernel *const g = blur_kernel(2.7f);
-    const int diff = g->diff, len = g->len;
-    const float *k = g->k, scale = g->scale;
-    ImageF tmp = {0};
-    if (!img_alloc(&tmp, in->y, in->x, s, false)) return false;
-    for (size_t y = 0; y < in->y; y++) {
-        const float *r = crow(in, y);
-        for (size_t x = 0; x < in->x; x++) {
-            float sum = 0.0f;
-            if (x >= (size_t)diff && x + (size_t)diff < in->x) {
-                const size_t d = x - (size_t)diff;
-                for (int j = 0; j < len; j++)
-                    sum += diff_pre_val(r[d + (size_t)j]) * k[j];
-                row(&tmp, x)[y] = sum * scale;
-            } else {
-                const int minx = x < (size_t)diff ? 0 : (int)x - diff;
-                const int maxx = fmin((int)in->x - 1, (int)x + diff);
-                float w = 0.0f;
-                for (int j = minx; j <= maxx; j++) {
-                    sum += diff_pre_val(r[j]) * k[j - (int)x + diff];
-                    w += k[j - (int)x + diff];
-                }
-                row(&tmp, x)[y] = sum / w;
-            }
-        }
-    }
-    for (size_t y = 0; y < tmp.y; y++) {
-        const float *r = crow(&tmp, y);
-        for (size_t x = 0; x < tmp.x; x++) {
-            if (x >= (size_t)diff && x + (size_t)diff < tmp.x) {
-                float sum = 0.0f;
-                for (int j = -diff; j <= diff; j++)
-                    sum += r[(int)x + j] * k[j + diff];
-                row(out, x)[y] = sum * scale;
-            } else {
-                const int minx = x < (size_t)diff ? 0 : (int)x - diff;
-                const int maxx = fmin((int)tmp.x - 1, (int)x + diff);
-                float sum = 0.0f, w = 0.0f;
-                for (int j = minx; j <= maxx; j++) {
-                    sum += r[j] * k[j - (int)x + diff];
-                    w += k[j - (int)x + diff];
-                }
-                row(out, x)[y] = sum / w;
-            }
-        }
-    }
-    scratch_reset(s, mark);
-    return true;
-}
-
 static void sub(const ImageF *restrict a, const ImageF *restrict b,
                 ImageF *restrict c)
 {
@@ -760,7 +708,7 @@ static void fuzzy_erosion(const ImageF *restrict from, ImageF *restrict to) {
     }
 }
 
-static bool mask_img(const ImageF *m0, const ImageF *m1, ImageF *mask,
+static bool mask_img(ImageF *m0, ImageF *m1, ImageF *mask,
                      ImageF *diff_ac, ScratchBuffer *s)
 {
     const ScratchMark mark = scratch_mark(s);
@@ -773,7 +721,11 @@ static bool mask_img(const ImageF *m0, const ImageF *m1, ImageF *mask,
         scratch_reset(s, mark);
         return false;
     }
-    if (!blur_diff_pre(m0, &b0, s) || !blur_diff_pre(m1, &b1, s)) {
+    for (size_t i = 0; i < x * y; i++) {
+        m0->p[i] = diff_pre_val(m0->p[i]);
+        m1->p[i] = diff_pre_val(m1->p[i]);
+    }
+    if (!blur(m0, 2.7f, &b0, s) || !blur(m1, 2.7f, &b1, s)) {
         scratch_reset(s, mark);
         return false;
     }

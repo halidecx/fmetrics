@@ -86,6 +86,77 @@ static float amplify_range(const double w, const float x) {
     return 2.0f * x;
 }
 
+static bool blur_fixed(const ImageF *const in, const BlurKernel *const g,
+                       ImageF *const out, ScratchBuffer *const s)
+{
+    const ScratchMark mark = scratch_mark(s);
+    const size_t width = in->x, height = in->y;
+    const size_t diff = (size_t)g->diff;
+    ImageF tmp = {0};
+    if (!img_alloc(&tmp, width, height, s, false)) return false;
+    for (size_t y = 0; y < height; y++) {
+        const float *r = crow(in, y);
+        float *t = row(&tmp, y);
+        if (width > 2 * diff) {
+            for (size_t x = diff; x + diff < width; x++)
+                t[x] = r[x - diff] * g->k[0];
+            for (int j = 1; j < g->len; j++)
+                for (size_t x = diff; x + diff < width; x++)
+                    t[x] += r[x - diff + (size_t)j] * g->k[j];
+            for (size_t x = diff; x + diff < width; x++) t[x] *= g->scale;
+        }
+        const size_t left = width > 2 * diff ? diff : width;
+        const size_t right = width > 2 * diff ? width - diff : width;
+        for (size_t x = 0; x < left; x++) {
+            const int minx = x < diff ? 0 : (int)x - g->diff;
+            const int maxx = fmin((int)width - 1, (int)x + g->diff);
+            float sum = 0.0f, w = 0.0f;
+            for (int j = minx; j <= maxx; j++) {
+                sum += r[j] * g->k[j - (int)x + g->diff];
+                w += g->k[j - (int)x + g->diff];
+            }
+            t[x] = sum / w;
+        }
+        for (size_t x = right; x < width; x++) {
+            const int minx = (int)x - g->diff;
+            const int maxx = fmin((int)width - 1, (int)x + g->diff);
+            float sum = 0.0f, w = 0.0f;
+            for (int j = minx; j <= maxx; j++) {
+                sum += r[j] * g->k[j - (int)x + g->diff];
+                w += g->k[j - (int)x + g->diff];
+            }
+            t[x] = sum / w;
+        }
+    }
+    for (size_t y = 0; y < height; y++) {
+        float *o = row(out, y);
+        if (y >= diff && y + diff < height) {
+            const float *t = crow(&tmp, y - diff);
+            for (size_t x = 0; x < width; x++) o[x] = t[x] * g->k[0];
+            for (int j = 1; j < g->len; j++) {
+                const float *t = crow(&tmp, y - diff + (size_t)j);
+                for (size_t x = 0; x < width; x++)
+                    o[x] += t[x] * g->k[j];
+            }
+            for (size_t x = 0; x < width; x++) o[x] *= g->scale;
+        } else {
+            const int miny = y < diff ? 0 : (int)y - g->diff;
+            const int maxy = fmin((int)height - 1, (int)y + g->diff);
+            for (size_t x = 0; x < width; x++) {
+                float sum = 0.0f, w = 0.0f;
+                for (int j = miny; j <= maxy; j++) {
+                    sum += tmp.p[(size_t)j * width + x] *
+                           g->k[j - (int)y + g->diff];
+                    w += g->k[j - (int)y + g->diff];
+                }
+                o[x] = sum / w;
+            }
+        }
+    }
+    scratch_reset(s, mark);
+    return true;
+}
+
 static bool blur(const ImageF *in, const float sigma, ImageF *out,
                  ScratchBuffer *s)
 {
@@ -159,6 +230,9 @@ static bool blur(const ImageF *in, const float sigma, ImageF *out,
         scratch_reset(s, mark);
         return true;
     }
+    if (g != NULL && in->x > 4 * (size_t)g->diff &&
+        in->y > 4 * (size_t)g->diff)
+        return blur_fixed(in, g, out, s);
     ImageF tmp = {0};
     if (!img_alloc(&tmp, in->y, in->x, s, false)) return false;
     for (size_t y = 0; y < in->y; y++) {

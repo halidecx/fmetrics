@@ -2,6 +2,9 @@
 
 Fast image & video fidelity metrics in C & Zig.
 
+Read the [wiki](https://github.com/halidecx/fmetrics/wiki) for comprehensive
+documentation (library usage, speed testing, MOS correlation, etc).
+
 ## Usage
 
 Compilation requires [Zig](https://ziglang.org/) ≥0.16.0 & a macOS, Linux, or
@@ -12,18 +15,6 @@ zig build --release=fast
 ```
 
 You may add `-Dflto=true` for FLTO, and `-Dstrip=true` to strip the binary.
-
-Compilation emits:
-
-```tree
-zig-out
-├── bin
-│   ├── fmetrics
-├── include
-│   └── fmetrics.h
-└── lib
-    └── libfmetrics.a
-```
 
 `fmetrics` binary usage:
 
@@ -44,140 +35,6 @@ options:
 
 sRGB PNG, PNM/PAM, QOI, or Y4M input expected
 ```
-
-Usage is different per-metric; some metrics support outputting visual error maps
-via `--err-map`, and some support additional configuration options. I/O is the
-same for all metrics, and is provided by
-[simpleimgio](https://github.com/gianni-rosato/simpleimgio).
-
-## Library Usage
-
-`libfmetrics.a` exposes a C API declared in `fmetrics.h`. To use it as a Zig
-dependency, add it to your `build.zig.zon` by running:
-
-```sh
-zig fetch --save git+https://github.com/halidecx/fmetrics.git
-```
-
-This should show something like this in `build.zig.zon`:
-
-```zig
-.dependencies = .{
-    .fmetrics = .{
-        .url = "git+https://github.com/halidecx/fmetrics.git#<commit>",
-        .hash = "fmetrics-<version>-<hash>",
-    },
-},
-```
-
-Then you can link it from your `build.zig`:
-
-```zig
-const fmetrics_dep = b.dependency("fmetrics", .{
-    .target = target,
-    .optimize = optimize,
-});
-const fmetrics = fmetrics_dep.artifact("fmetrics");
-exe.root_module.linkLibrary(fmetrics);
-exe.root_module.addIncludePath(fmetrics.getEmittedIncludeTree());
-```
-
-Zig projects can also import the native Zig API:
-
-```zig
-const fmetrics_dep = b.dependency("fmetrics", .{
-    .target = target,
-    .optimize = optimize,
-});
-const fmetrics = fmetrics_dep.module("fmetrics");
-exe.root_module.addImport("fmetrics", fmetrics);
-exe.root_module.linkLibrary(fmetrics_dep.artifact("libfmetrics"));
-```
-
-```zig
-const fmetrics = @import("fmetrics");
-
-const reference = try fmetrics.Image.init(reference_rgb, width, height);
-const distorted = try fmetrics.Image.init(distorted_rgb, width, height);
-var workspace = try fmetrics.Workspace.init();
-defer workspace.deinit();
-const score = try fmetrics.msssim(&workspace, reference, distorted);
-```
-
-See [`src/fmetrics.zig`](src/fmetrics.zig) for the full Zig API. C projects may
-use [`fmetrics.h`](src/fmetrics.h).
-
-## Reference Comparison
-
-Reference metric implementations tested include:
-
-- Butteraugli: [libjxl](https://github.com/libjxl/libjxl)'s `butteraugli_main`
-- CVVDP: Our [fcvvdp](https://github.com/halidecx/fcvvdp)
-- IW-SSIM: A [fork](https://github.com/gianni-rosato/Python-IW-SSIM) of
-  [Python IW-SSIM](https://github.com/Jack-guo-xy/Python-IW-SSIM)
-- MS-SSIM: [libvmaf](https://github.com/netflix/vmaf)'s MS-SSIM filter via
-  `ffmpeg`.
-- SSIMULACRA2:
-  [Cloudinary's `ssimulacra2`](https://github.com/cloudinary/ssimulacra2)
-
-### MOS Correlation
-
-MOS correlation is how closely a metric correlates with subjective human
-ratings.
-
-Tested using `mos.py` via
-[mos-correlation](https://github.com/gianni-rosato/mos-correlation), on CID22.
-For our purposes, these tests don't determine which metrics we think are better
-than others, but rather how effective our implementations are relative to their
-references. Here, we just report the Spearman Rank Correlation Coefficient
-(SRCC), where higher is better.
-
-| metric                 | srcc (reference) | srcc (fmetrics) | difference (%) |
-| ---------------------- | ---------------- | --------------- | -------------- |
-| butteraugli (p3 i203)* | 0.7929           | 0.7863          | -0.83%         |
-| fcvvdp**               | 0.8274           | 0.8286          | +0.15%         |
-| iw_ssim                | n/a              | 0.7925          | +0.00%         |
-| ms_ssim                | 0.7845           | 0.8048          | +2.59%         |
-| ssimulacra2            | 0.8916           | 0.8910          | -0.07%         |
-
-> \*Note: Because Butteraugli is a smaller-is-better metric, the signs are
-> flipped for the SRCCs reported above.
-
-> \*\*Note: fmetrics uses the fcvvdp library (as a Zig module) with different
-> I/O, so the underlying metric implementation is the same.
-
-### Speed & Memory Usage
-
-Testing was done on a stock Core i7-13700k with 3840x2160 source & distorted PAM
-images
-([Drive link](https://drive.google.com/drive/folders/1Kxzmw-jMWtbh8elPuQidY5MM1pTXkF0L?usp=sharing),
-lossless JPEG-XL sources; run `djxl <*.pam.jxl> <*.pam>` to decompress).
-
-#### Speed (ms)
-
-| metric                | ms (reference) | ms (fmetrics) | difference (%) |
-| --------------------- | -------------- | ------------- | -------------- |
-| butteraugli (p3 i203) | 4110           | 2010          | 104.5% faster  |
-| fcvvdp*               | 1060           | 1060          | 0.00%          |
-| iw_ssim               | 3020           | 228           | 1224.6% faster |
-| ms_ssim**             | 1110           | 106           | 947.2% faster  |
-| ssimulacra2           | 722            | 232           | 211.2% faster  |
-
-#### RAM Usage (MB)
-
-| metric                | MB (reference) | MB (fmetrics) | difference (%) |
-| --------------------- | -------------- | ------------- | -------------- |
-| butteraugli (p3 i203) | 2440           | 1670          | -31.56%        |
-| fcvvdp*               | 1600           | 1600          | 0.00%          |
-| iw_ssim               | 2660           | 551           | -79.29%        |
-| ms_ssim**             | 841            | 376           | -55.29%        |
-| ssimulacra2           | 1370           | 741           | -45.91%        |
-
-> \*Note: fmetrics uses the fcvvdp library (as a Zig module) with different I/O,
-> so the underlying metric implementation is the same.
-
-> \*\*Note: MS-SSIM comparison isn't fair, as libvmaf has to compute other
-> metrics in the filterchain alongside MS-SSIM.
 
 ## Credits
 

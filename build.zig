@@ -88,7 +88,8 @@ pub fn build(b: *std.Build) void {
         "-Wall",
         "-Wextra",
         "-Wpedantic",
-        "-Ofast",
+        "-O3",
+        "-ffast-math",
     };
     lib.root_module.addCSourceFiles(.{
         .files = &lib_sources,

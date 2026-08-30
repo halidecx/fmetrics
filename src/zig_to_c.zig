@@ -52,7 +52,8 @@ fn packedImage(img: *const c.FmetricsImg, buffer: []u8) []const u8 {
     const row_bytes = @as(usize, img.width) * 3;
     const pixels = @as(usize, img.width) * @as(usize, img.height);
     const expected_len = pixels * 3;
-    const src = img.data[0..(@as(usize, img.stride) * img.height)];
+    const data: [*]const u8 = @ptrCast(img.data.?);
+    const src = data[0..(@as(usize, img.stride) * img.height)];
     if (img.stride == row_bytes) return src[0..expected_len];
 
     if (img.stride == row_bytes) return src[0..expected_len];

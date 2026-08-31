@@ -989,7 +989,8 @@ static size_t butteraugli_scratch_size(const size_t x, const size_t y) {
 static bool load_rgb(const FmetricsImg *src, Image3F *dst, ScratchBuffer *s) {
     if (!img3_alloc(dst, src->width, src->height, s, false)) return false;
     for (uint32_t y = 0; y < src->height; y++) {
-        const uint8_t *const r = src->data + (size_t)y * src->stride;
+        const uint8_t *const r =
+            (const uint8_t *)src->data + (size_t)y * src->stride;
         for (uint32_t x = 0; x < src->width; x++) {
             const size_t i = (size_t)y * src->width + x;
             dst->c[0].p[i] = SRGB_LUT[r[x * 3 + 0]];

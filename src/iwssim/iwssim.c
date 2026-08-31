@@ -85,7 +85,8 @@ static bool rgb_to_luma(const FmetricsImg *const src, ImageD *const dst,
     if (!image_alloc(dst, (int)src->width, (int)src->height, scratch))
         return false;
     for (size_t y = 0; y < src->height; y++) {
-        const uint8_t *row = src->data + y * (size_t)src->stride;
+        const uint8_t *row =
+            (const uint8_t *)src->data + y * (size_t)src->stride;
         for (size_t x = 0; x < src->width; x++) {
             const uint8_t *px = row + x * 3u;
             dst->data[y * (size_t)dst->width + x] =

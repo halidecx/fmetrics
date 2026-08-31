@@ -62,7 +62,8 @@ static bool load_luma(const FmetricsImg *const src, ImageD *const dst,
     const float kg = 0.587f / 255.0f;
     const float kb = 0.114f / 255.0f;
     for (size_t y = 0; y < src->height; y++) {
-        const uint8_t *row = src->data + y * (size_t)src->stride;
+        const uint8_t *row =
+            (const uint8_t *)src->data + y * (size_t)src->stride;
         float *out = dst->data + y * (size_t)dst->width;
         for (size_t x = 0; x < src->width; x++) {
             const uint8_t *px = row + x * 3u;

@@ -75,43 +75,43 @@ fn parseMetric(name: []const u8) ?Metric {
     return null;
 }
 
-fn parseDisplayModel(name: []const u8) ?c.FcvvdpDisplayModel {
-    const models = [_]struct { []const u8, c.FcvvdpDisplayModel }{
-        .{ "fhd", c.CVVDP_DISPLAY_STANDARD_FHD },
-        .{ "standard_fhd", c.CVVDP_DISPLAY_STANDARD_FHD },
-        .{ "4k", c.CVVDP_DISPLAY_STANDARD_4K },
-        .{ "standard_4k", c.CVVDP_DISPLAY_STANDARD_4K },
-        .{ "hdr_pq", c.CVVDP_DISPLAY_STANDARD_HDR_PQ },
-        .{ "standard_hdr_pq", c.CVVDP_DISPLAY_STANDARD_HDR_PQ },
-        .{ "hdr_hlg", c.CVVDP_DISPLAY_STANDARD_HDR_HLG },
-        .{ "standard_hdr_hlg", c.CVVDP_DISPLAY_STANDARD_HDR_HLG },
-        .{ "hdr_linear", c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR },
-        .{ "standard_hdr_linear", c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR },
-        .{ "hdr_dark", c.CVVDP_DISPLAY_STANDARD_HDR_DARK },
-        .{ "standard_hdr_linear_dark", c.CVVDP_DISPLAY_STANDARD_HDR_DARK },
-        .{ "hdr_zoom", c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM },
-        .{ "standard_hdr_linear_zoom", c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM },
-        .{ "standard_hmd", c.CVVDP_DISPLAY_STANDARD_HMD },
-        .{ "standard_phone", c.CVVDP_DISPLAY_STANDARD_PHONE },
-        .{ "sdr_4k_30", c.CVVDP_DISPLAY_SDR_4K_30 },
-        .{ "sdr_fhd_24", c.CVVDP_DISPLAY_SDR_FHD_24 },
-        .{ "htc_vive_pro", c.CVVDP_DISPLAY_HTC_VIVE_PRO },
-        .{ "iphone_12_pro", c.CVVDP_DISPLAY_IPHONE_12_PRO },
-        .{ "iphone_14_pro", c.CVVDP_DISPLAY_IPHONE_14_PRO },
-        .{ "iphone_14_pro_vert", c.CVVDP_DISPLAY_IPHONE_14_PRO_VERT },
-        .{ "iphone_14_pro_hdr", c.CVVDP_DISPLAY_IPHONE_14_PRO_HDR },
-        .{ "iphone_14_pro_hdr_vert", c.CVVDP_DISPLAY_IPHONE_14_PRO_HDR_VERT },
-        .{ "ipad_pro_12_9", c.CVVDP_DISPLAY_IPAD_PRO_12_9 },
-        .{ "macbook_pro_16", c.CVVDP_DISPLAY_MACBOOK_PRO_16 },
-        .{ "lg_oled_2017_sdr", c.CVVDP_DISPLAY_LG_OLED_2017_SDR },
-        .{ "lg_oled_2017_hdr", c.CVVDP_DISPLAY_LG_OLED_2017_HDR },
-        .{ "eizo_cg3146", c.CVVDP_DISPLAY_EIZO_CG3146 },
-        .{ "65inch_hdr_pq_4knit", c.CVVDP_DISPLAY_65INCH_HDR_PQ_4KNIT },
-        .{ "65inch_hdr_pq_2knit", c.CVVDP_DISPLAY_65INCH_HDR_PQ_2KNIT },
-        .{ "65inch_hdr_pq_1knit", c.CVVDP_DISPLAY_65INCH_HDR_PQ_1KNIT },
-        .{ "lg_oled_2026_hdr_pq", c.CVVDP_DISPLAY_LG_OLED_2026_HDR_PQ },
-        .{ "mcos", c.CVVDP_DISPLAY_CID22_MCOS },
-        .{ "cid22_mcos", c.CVVDP_DISPLAY_CID22_MCOS },
+fn parseDisplayModel(name: []const u8) ?c.FmetricsCvvdpDisplayModel {
+    const models = [_]struct { []const u8, c.FmetricsCvvdpDisplayModel }{
+        .{ "fhd", c.FMETRICS_CVVDP_DISPLAY_STANDARD_FHD },
+        .{ "standard_fhd", c.FMETRICS_CVVDP_DISPLAY_STANDARD_FHD },
+        .{ "4k", c.FMETRICS_CVVDP_DISPLAY_STANDARD_4K },
+        .{ "standard_4k", c.FMETRICS_CVVDP_DISPLAY_STANDARD_4K },
+        .{ "hdr_pq", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_PQ },
+        .{ "standard_hdr_pq", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_PQ },
+        .{ "hdr_hlg", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_HLG },
+        .{ "standard_hdr_hlg", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_HLG },
+        .{ "hdr_linear", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR },
+        .{ "standard_hdr_linear", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR },
+        .{ "hdr_dark", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_DARK },
+        .{ "standard_hdr_linear_dark", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_DARK },
+        .{ "hdr_zoom", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM },
+        .{ "standard_hdr_linear_zoom", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM },
+        .{ "standard_hmd", c.FMETRICS_CVVDP_DISPLAY_STANDARD_HMD },
+        .{ "standard_phone", c.FMETRICS_CVVDP_DISPLAY_STANDARD_PHONE },
+        .{ "sdr_4k_30", c.FMETRICS_CVVDP_DISPLAY_SDR_4K_30 },
+        .{ "sdr_fhd_24", c.FMETRICS_CVVDP_DISPLAY_SDR_FHD_24 },
+        .{ "htc_vive_pro", c.FMETRICS_CVVDP_DISPLAY_HTC_VIVE_PRO },
+        .{ "iphone_12_pro", c.FMETRICS_CVVDP_DISPLAY_IPHONE_12_PRO },
+        .{ "iphone_14_pro", c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO },
+        .{ "iphone_14_pro_vert", c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_VERT },
+        .{ "iphone_14_pro_hdr", c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR },
+        .{ "iphone_14_pro_hdr_vert", c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR_VERT },
+        .{ "ipad_pro_12_9", c.FMETRICS_CVVDP_DISPLAY_IPAD_PRO_12_9 },
+        .{ "macbook_pro_16", c.FMETRICS_CVVDP_DISPLAY_MACBOOK_PRO_16 },
+        .{ "lg_oled_2017_sdr", c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_SDR },
+        .{ "lg_oled_2017_hdr", c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_HDR },
+        .{ "eizo_cg3146", c.FMETRICS_CVVDP_DISPLAY_EIZO_CG3146 },
+        .{ "65inch_hdr_pq_4knit", c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_4KNIT },
+        .{ "65inch_hdr_pq_2knit", c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_2KNIT },
+        .{ "65inch_hdr_pq_1knit", c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_1KNIT },
+        .{ "lg_oled_2026_hdr_pq", c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2026_HDR_PQ },
+        .{ "mcos", c.FMETRICS_CVVDP_DISPLAY_CID22_MCOS },
+        .{ "cid22_mcos", c.FMETRICS_CVVDP_DISPLAY_CID22_MCOS },
     };
 
     inline for (models) |model| {
@@ -120,35 +120,35 @@ fn parseDisplayModel(name: []const u8) ?c.FcvvdpDisplayModel {
     return null;
 }
 
-fn displayModelName(model: c.FcvvdpDisplayModel) []const u8 {
+fn displayModelName(model: c.FmetricsCvvdpDisplayModel) []const u8 {
     return switch (model) {
-        c.CVVDP_DISPLAY_STANDARD_FHD => "standard_fhd",
-        c.CVVDP_DISPLAY_STANDARD_4K => "standard_4k",
-        c.CVVDP_DISPLAY_STANDARD_HDR_PQ => "standard_hdr_pq",
-        c.CVVDP_DISPLAY_STANDARD_HDR_HLG => "standard_hdr_hlg",
-        c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR => "standard_hdr_linear",
-        c.CVVDP_DISPLAY_STANDARD_HDR_DARK => "standard_hdr_dark",
-        c.CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM => "standard_hdr_linear_zoom",
-        c.CVVDP_DISPLAY_STANDARD_HMD => "standard_hmd",
-        c.CVVDP_DISPLAY_STANDARD_PHONE => "standard_phone",
-        c.CVVDP_DISPLAY_SDR_4K_30 => "sdr_4k_30",
-        c.CVVDP_DISPLAY_SDR_FHD_24 => "sdr_fhd_24",
-        c.CVVDP_DISPLAY_HTC_VIVE_PRO => "htc_vive_pro",
-        c.CVVDP_DISPLAY_IPHONE_12_PRO => "iphone_12_pro",
-        c.CVVDP_DISPLAY_IPHONE_14_PRO => "iphone_14_pro",
-        c.CVVDP_DISPLAY_IPHONE_14_PRO_VERT => "iphone_14_pro_vert",
-        c.CVVDP_DISPLAY_IPHONE_14_PRO_HDR => "iphone_14_pro_hdr",
-        c.CVVDP_DISPLAY_IPHONE_14_PRO_HDR_VERT => "iphone_14_pro_hdr_vert",
-        c.CVVDP_DISPLAY_IPAD_PRO_12_9 => "ipad_pro_12_9",
-        c.CVVDP_DISPLAY_MACBOOK_PRO_16 => "macbook_pro_16",
-        c.CVVDP_DISPLAY_LG_OLED_2017_SDR => "lg_oled_2017_sdr",
-        c.CVVDP_DISPLAY_LG_OLED_2017_HDR => "lg_oled_2017_hdr",
-        c.CVVDP_DISPLAY_EIZO_CG3146 => "eizo_cg3146",
-        c.CVVDP_DISPLAY_65INCH_HDR_PQ_4KNIT => "65inch_hdr_pq_4knit",
-        c.CVVDP_DISPLAY_65INCH_HDR_PQ_2KNIT => "65inch_hdr_pq_2knit",
-        c.CVVDP_DISPLAY_65INCH_HDR_PQ_1KNIT => "65inch_hdr_pq_1knit",
-        c.CVVDP_DISPLAY_LG_OLED_2026_HDR_PQ => "lg_oled_2026_hdr_pq",
-        c.CVVDP_DISPLAY_CID22_MCOS => "cid22_mcos",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_FHD => "standard_fhd",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_4K => "standard_4k",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_PQ => "standard_hdr_pq",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_HLG => "standard_hdr_hlg",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR => "standard_hdr_linear",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_DARK => "standard_hdr_dark",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM => "standard_hdr_linear_zoom",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_HMD => "standard_hmd",
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_PHONE => "standard_phone",
+        c.FMETRICS_CVVDP_DISPLAY_SDR_4K_30 => "sdr_4k_30",
+        c.FMETRICS_CVVDP_DISPLAY_SDR_FHD_24 => "sdr_fhd_24",
+        c.FMETRICS_CVVDP_DISPLAY_HTC_VIVE_PRO => "htc_vive_pro",
+        c.FMETRICS_CVVDP_DISPLAY_IPHONE_12_PRO => "iphone_12_pro",
+        c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO => "iphone_14_pro",
+        c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_VERT => "iphone_14_pro_vert",
+        c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR => "iphone_14_pro_hdr",
+        c.FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR_VERT => "iphone_14_pro_hdr_vert",
+        c.FMETRICS_CVVDP_DISPLAY_IPAD_PRO_12_9 => "ipad_pro_12_9",
+        c.FMETRICS_CVVDP_DISPLAY_MACBOOK_PRO_16 => "macbook_pro_16",
+        c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_SDR => "lg_oled_2017_sdr",
+        c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_HDR => "lg_oled_2017_hdr",
+        c.FMETRICS_CVVDP_DISPLAY_EIZO_CG3146 => "eizo_cg3146",
+        c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_4KNIT => "65inch_hdr_pq_4knit",
+        c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_2KNIT => "65inch_hdr_pq_2knit",
+        c.FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_1KNIT => "65inch_hdr_pq_1knit",
+        c.FMETRICS_CVVDP_DISPLAY_LG_OLED_2026_HDR_PQ => "lg_oled_2026_hdr_pq",
+        c.FMETRICS_CVVDP_DISPLAY_CID22_MCOS => "cid22_mcos",
         else => "unknown",
     };
 }
@@ -555,14 +555,18 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: imgio.Image) ![]u8 {
     return rgb;
 }
 
-fn cvvdpImageFromRgb(rgb: []const u8, width: usize, height: usize) c.FcvvdpImage {
+fn cvvdpImageFromRgb(
+    rgb: []const u8,
+    width: usize,
+    height: usize,
+) c.FmetricsImg {
     return .{
         .data = rgb.ptr,
         .width = @intCast(width),
         .height = @intCast(height),
         .stride = @intCast(width * 3),
-        .format = c.CVVDP_PIXEL_FORMAT_RGB_UINT8,
-        .colorspace = c.CVVDP_COLORSPACE_SRGB,
+        .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
+        .colorspace = c.FMETRICS_COLORSPACE_SRGB,
     };
 }
 
@@ -712,7 +716,8 @@ pub fn main(init: std.process.Init) !void {
 
     var ref_filename: ?[]const u8 = null;
     var dis_filename: ?[]const u8 = null;
-    var display_model: c.FcvvdpDisplayModel = c.CVVDP_DISPLAY_STANDARD_FHD;
+    var display_model: c.FmetricsCvvdpDisplayModel =
+        c.FMETRICS_CVVDP_DISPLAY_STANDARD_FHD;
     var threads: c_uint = 0;
     var verbose = false;
     var json_output = false;
@@ -872,8 +877,8 @@ pub fn main(init: std.process.Init) !void {
         if (metric == .cvvdp) {
             var ref = cvvdpImageFromRgb(ref_rgb, ref_img.width, ref_img.height);
             var dis = cvvdpImageFromRgb(dis_rgb, dis_img.width, dis_img.height);
-            var cvvdp_result: c.FcvvdpResult = undefined;
-            const err = c.cvvdp_compare_images(
+            var cvvdp_result: c.FmetricsCvvdpResult = undefined;
+            const err = c.fmetrics_cvvdp_cmp(
                 &ref,
                 &dis,
                 display_model,
@@ -882,8 +887,10 @@ pub fn main(init: std.process.Init) !void {
                 &cvvdp_result,
             );
 
-            if (err != c.CVVDP_OK) {
-                print("Error: CVVDP comparison failed: {s}\n", .{c.cvvdp_error_string(err)});
+            if (err != c.FMETRICS_OK) {
+                print("Error: CVVDP comparison failed: {s}\n", .{
+                    c.fmetrics_error_str(err),
+                });
                 return error.CVVDPError;
             }
 
@@ -1032,8 +1039,8 @@ pub fn main(init: std.process.Init) !void {
         else
             0.0;
 
-        var ctx_ptr: ?*c.FcvvdpCtx = null;
-        const create_err = c.cvvdp_create(
+        var ctx_ptr: ?*c.FmetricsCvvdpCtx = null;
+        const create_err = c.fmetrics_cvvdp_create(
             @intCast(ref_dec.header.width),
             @intCast(ref_dec.header.height),
             fps,
@@ -1042,11 +1049,13 @@ pub fn main(init: std.process.Init) !void {
             null,
             &ctx_ptr,
         );
-        if (create_err != c.CVVDP_OK or ctx_ptr == null) {
-            print("Error: CVVDP context creation failed: {s}\n", .{c.cvvdp_error_string(create_err)});
+        if (create_err != c.FMETRICS_OK or ctx_ptr == null) {
+            print("Error: CVVDP context creation failed: {s}\n", .{
+                c.fmetrics_error_str(create_err),
+            });
             return error.CVVDPError;
         }
-        defer c.cvvdp_destroy(ctx_ptr.?);
+        defer c.fmetrics_cvvdp_destroy(ctx_ptr.?);
 
         const pixels = try std.math.mul(usize, ref_dec.header.width, ref_dec.header.height);
         const ref_rgb = try allocator.alloc(u8, pixels * 3);
@@ -1054,7 +1063,7 @@ pub fn main(init: std.process.Init) !void {
         const dis_rgb = try allocator.alloc(u8, pixels * 3);
         defer allocator.free(dis_rgb);
 
-        var cvvdp_result: c.FcvvdpResult = undefined;
+        var cvvdp_result: c.FmetricsCvvdpResult = undefined;
 
         while (true) {
             const ref_frame_opt = try ref_dec.readFrame();
@@ -1085,14 +1094,17 @@ pub fn main(init: std.process.Init) !void {
 
                 var ref = cvvdpImageFromRgb(ref_rgb, ref_frame.width, ref_frame.height);
                 var dis = cvvdpImageFromRgb(dis_rgb, dis_frame.width, dis_frame.height);
-                const proc_err = c.cvvdp_process_frame(
+                const proc_err = c.fmetrics_cvvdp_process_frame(
                     ctx_ptr.?,
                     &ref,
                     &dis,
                     &cvvdp_result,
                 );
-                if (proc_err != c.CVVDP_OK) {
-                    print("Error: CVVDP frame processing failed at frame {d}: {s}\n", .{ frame_index, c.cvvdp_error_string(proc_err) });
+                if (proc_err != c.FMETRICS_OK) {
+                    print(
+                        "Error: CVVDP frame processing failed at frame {d}: {s}\n",
+                        .{ frame_index, c.fmetrics_error_str(proc_err) },
+                    );
                     return error.CVVDPError;
                 }
             }

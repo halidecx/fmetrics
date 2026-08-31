@@ -17,6 +17,7 @@
 #ifndef FMETRICS_H
 #define FMETRICS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -48,6 +49,8 @@ typedef enum FmetricsErr {
 
 typedef enum FmetricsPixFmt {
     FMETRICS_PIX_FMT_RGB_UINT8 = 1,
+    FMETRICS_PIX_FMT_RGB_FLOAT = 2,
+    FMETRICS_PIX_FMT_RGB_UINT16 = 3,
 } FmetricsPixFmt;
 
 typedef enum FmetricsColorspace {
@@ -55,7 +58,7 @@ typedef enum FmetricsColorspace {
 } FmetricsColorspace;
 
 typedef struct FmetricsImg {
-    const uint8_t *data;
+    const void *data;
     uint32_t width, height, stride;
     FmetricsPixFmt format;
     FmetricsColorspace colorspace;
@@ -65,6 +68,76 @@ typedef struct FmetricsButteraugliOptions {
     float intensity_target;
     int pnorm;
 } FmetricsButteraugliOptions;
+
+typedef enum FmetricsCvvdpDisplayModel {
+    FMETRICS_CVVDP_DISPLAY_STANDARD_FHD = 0,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_4K,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_PQ,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_HLG,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_DARK,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR_ZOOM,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_HMD,
+    FMETRICS_CVVDP_DISPLAY_STANDARD_PHONE,
+    FMETRICS_CVVDP_DISPLAY_SDR_4K_30,
+    FMETRICS_CVVDP_DISPLAY_SDR_FHD_24,
+    FMETRICS_CVVDP_DISPLAY_HTC_VIVE_PRO,
+    FMETRICS_CVVDP_DISPLAY_IPHONE_12_PRO,
+    FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO,
+    FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_VERT,
+    FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR,
+    FMETRICS_CVVDP_DISPLAY_IPHONE_14_PRO_HDR_VERT,
+    FMETRICS_CVVDP_DISPLAY_IPAD_PRO_12_9,
+    FMETRICS_CVVDP_DISPLAY_MACBOOK_PRO_16,
+    FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_SDR,
+    FMETRICS_CVVDP_DISPLAY_LG_OLED_2017_HDR,
+    FMETRICS_CVVDP_DISPLAY_EIZO_CG3146,
+    FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_4KNIT,
+    FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_2KNIT,
+    FMETRICS_CVVDP_DISPLAY_65INCH_HDR_PQ_1KNIT,
+    FMETRICS_CVVDP_DISPLAY_LG_OLED_2026_HDR_PQ,
+    FMETRICS_CVVDP_DISPLAY_CID22_MCOS,
+    FMETRICS_CVVDP_DISPLAY_CUSTOM,
+} FmetricsCvvdpDisplayModel;
+
+typedef struct FmetricsCvvdpDisplayParams {
+    int resolution_width, resolution_height;
+    float viewing_distance_meters;
+    float diagonal_size_inches;
+    float max_luminance;
+    float contrast;
+    float ambient_light;
+    float reflectivity;
+    bool is_hdr;
+} FmetricsCvvdpDisplayParams;
+
+typedef struct FmetricsCvvdpResult {
+    double jod;
+    double quality;
+} FmetricsCvvdpResult;
+
+typedef struct FmetricsCvvdpCtx FmetricsCvvdpCtx;
+
+FmetricsErr fmetrics_cvvdp_create(
+    int width, int height, float fps,
+    FmetricsCvvdpDisplayModel display_model, unsigned threads,
+    const FmetricsCvvdpDisplayParams *custom_params,
+    FmetricsCvvdpCtx **out_context);
+void fmetrics_cvvdp_destroy(FmetricsCvvdpCtx *context);
+FmetricsErr fmetrics_cvvdp_process_frame(
+    FmetricsCvvdpCtx *context, const FmetricsImg *reference,
+    const FmetricsImg *distorted, FmetricsCvvdpResult *result);
+FmetricsErr fmetrics_cvvdp_reset(FmetricsCvvdpCtx *context);
+FmetricsErr fmetrics_cvvdp_cmp(
+    const FmetricsImg *reference,
+    const FmetricsImg *distorted,
+    FmetricsCvvdpDisplayModel display_model, unsigned threads,
+    const FmetricsCvvdpDisplayParams *custom_params,
+    FmetricsCvvdpResult *result);
+FmetricsErr fmetrics_cvvdp_get_display_params(
+    FmetricsCvvdpDisplayModel model,
+    FmetricsCvvdpDisplayParams *out_params);
+const char *fmetrics_cvvdp_version_str(void);
 
 typedef struct FmetricsWorkspace FmetricsWorkspace;
 

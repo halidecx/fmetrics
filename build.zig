@@ -43,8 +43,6 @@ pub fn build(b: *std.Build) void {
         .strip = strip,
         .flto = flto,
     });
-    const cvvdp = fcvvdp_dep.artifact("cvvdp");
-    cvvdp.lto = if (flto) .full else null;
 
     // fmetrics
     const fmetrics_module = b.addModule("fmetrics", .{
@@ -63,12 +61,11 @@ pub fn build(b: *std.Build) void {
     });
     translate_c.addIncludePath(b.path("."));
     translate_c.addIncludePath(spng.getEmittedIncludeTree());
-    translate_c.addIncludePath(cvvdp.getEmittedIncludeTree());
     const c_module = translate_c.createModule();
 
     // 'libfmetrics.a' static lib
     const lib = b.addLibrary(.{
-        .name = "libfmetrics",
+        .name = "fmetrics",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/zig_to_c.zig"),
             .target = target,
@@ -79,6 +76,7 @@ pub fn build(b: *std.Build) void {
     });
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
+        "src/fmetrics_cvvdp.c",
         "src/iwssim/iwssim.c",
         "src/msssim/msssim.c",
         "src/butteraugli/butteraugli.c",
@@ -95,10 +93,30 @@ pub fn build(b: *std.Build) void {
         .files = &lib_sources,
         .flags = &lib_flags,
     });
+    const cvvdp_sources = [_][]const u8{
+        "src/cvvdp.c",
+        "src/cvvdp_c.c",
+    };
+    lib.root_module.addCSourceFiles(.{
+        .root = fcvvdp_dep.path("."),
+        .files = &cvvdp_sources,
+        .flags = &lib_flags,
+    });
+    if (target.result.cpu.arch == .x86_64) {
+        lib.root_module.addCSourceFile(.{
+            .file = fcvvdp_dep.path("src/cvvdp_avx2.c"),
+            .flags = &lib_flags,
+        });
+    } else if (target.result.cpu.arch == .aarch64) {
+        lib.root_module.addCSourceFile(.{
+            .file = fcvvdp_dep.path("src/cvvdp_neon.c"),
+            .flags = &lib_flags,
+        });
+    }
     lib.lto = if (flto) .full else null;
     lib.root_module.addIncludePath(b.path("."));
+    lib.root_module.addIncludePath(fcvvdp_dep.path("src"));
     lib.root_module.linkLibrary(spng);
-    lib.root_module.linkLibrary(cvvdp);
     b.installArtifact(lib);
 
     // fmetrics.h
@@ -123,6 +141,5 @@ pub fn build(b: *std.Build) void {
     bin.root_module.addIncludePath(b.path("."));
     bin.root_module.linkLibrary(lib);
     bin.root_module.linkLibrary(spng);
-    bin.root_module.linkLibrary(cvvdp);
     b.installArtifact(bin);
 }

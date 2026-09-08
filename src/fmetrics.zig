@@ -30,10 +30,12 @@ pub const Error = error{
 
 pub const PixelFormat = enum {
     rgb_uint8,
+    rgb_float,
 };
 
 pub const Colorspace = enum {
     srgb,
+    linear_srgb,
 };
 
 pub const Image = struct {
@@ -43,6 +45,7 @@ pub const Image = struct {
     stride: u32,
     format: PixelFormat = .rgb_uint8,
     colorspace: Colorspace = .srgb,
+    hdr: bool = false,
 
     pub fn init(data: []const u8, width: u32, height: u32) !Image {
         const stride = std.math.mul(u32, width, 3) catch
@@ -66,14 +69,30 @@ pub const Image = struct {
         };
     }
 
+    pub fn initLinear(data: []const f32, width: u32, height: u32) !Image {
+        const stride = std.math.mul(u32, width, 12) catch
+            return error.InvalidArgument;
+        const image: Image = .{
+            .data = std.mem.sliceAsBytes(data),
+            .width = width,
+            .height = height,
+            .stride = stride,
+            .format = .rgb_float,
+            .colorspace = .linear_srgb,
+        };
+        try validateImage(image);
+        return image;
+    }
+
     fn asCImage(image: *const Image) c.FmetricsImg {
         return .{
             .data = image.data.ptr,
+            .hdr = image.hdr,
             .width = image.width,
             .height = image.height,
             .stride = image.stride,
-            .format = c.FMETRICS_PIX_FMT_RGB_UINT8,
-            .colorspace = c.FMETRICS_COLORSPACE_SRGB,
+            .format = if (image.format == .rgb_float) c.FMETRICS_PIX_FMT_RGB_FLOAT else c.FMETRICS_PIX_FMT_RGB_UINT8,
+            .colorspace = if (image.colorspace == .linear_srgb) c.FMETRICS_COLORSPACE_LINEAR_SRGB else c.FMETRICS_COLORSPACE_SRGB,
         };
     }
 };
@@ -112,10 +131,11 @@ fn errorFromC(err: c.FmetricsErr) !void {
 fn validateImage(image: Image) !void {
     if (image.width == 0 or image.height == 0)
         return error.InvalidArgument;
-    if (image.format != .rgb_uint8 or image.colorspace != .srgb)
+    if (!((image.format == .rgb_uint8 and image.colorspace == .srgb) or
+        (image.format == .rgb_float and image.colorspace == .linear_srgb)))
         return error.UnsupportedFormat;
 
-    const row_bytes = std.math.mul(usize, image.width, 3) catch
+    const row_bytes = std.math.mul(usize, image.width, if (image.format == .rgb_float) 12 else 3) catch
         return error.InvalidArgument;
     if (image.stride < row_bytes) return error.InvalidArgument;
     const len = std.math.mul(usize, image.stride, image.height) catch

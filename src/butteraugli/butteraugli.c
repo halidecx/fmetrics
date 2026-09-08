@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "../common/color.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -965,12 +966,11 @@ static FmetricsErr validate(const FmetricsImg *r, const FmetricsImg *d,
     {
         return FMETRICS_ERR_INVALID_ARGUMENT;
     }
-    if (r->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        d->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        r->colorspace != FMETRICS_COLORSPACE_SRGB ||
-        d->colorspace != FMETRICS_COLORSPACE_SRGB)
-    {
-        return FMETRICS_ERR_UNSUPPORTED_FORMAT;
+    const FmetricsImg *images[2] = {r, d};
+    for (unsigned i = 0; i < 2; i++) {
+        const FmetricsImg *img = images[i];
+        const FmetricsErr error = fmetrics_validate_rgb(img);
+        if (error != FMETRICS_OK) return error;
     }
     if (r->width != d->width || r->height != d->height)
         return FMETRICS_ERR_DIMENSION_MISMATCH;
@@ -993,9 +993,13 @@ static bool load_rgb(const FmetricsImg *src, Image3F *dst, ScratchBuffer *s) {
             (const uint8_t *)src->data + (size_t)y * src->stride;
         for (uint32_t x = 0; x < src->width; x++) {
             const size_t i = (size_t)y * src->width + x;
-            dst->c[0].p[i] = SRGB_LUT[r[x * 3 + 0]];
-            dst->c[1].p[i] = SRGB_LUT[r[x * 3 + 1]];
-            dst->c[2].p[i] = SRGB_LUT[r[x * 3 + 2]];
+            for (unsigned ch = 0; ch < 3; ch++) {
+                float v;
+                if (src->format == FMETRICS_PIX_FMT_RGB_FLOAT)
+                    memcpy(&v, r + (x * 3 + ch) * sizeof(float), sizeof(v));
+                else v = SRGB_LUT[r[x * 3 + ch]];
+                dst->c[ch].p[i] = v;
+            }
         }
     }
     return true;

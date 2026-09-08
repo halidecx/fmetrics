@@ -462,6 +462,49 @@ pub fn loadPNG(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !imgi
     };
 }
 
+fn loadLinearPNG(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !?MetricImage {
+    if (!hasExtension(path, ".png")) return null;
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    const buf = try allocator.alloc(u8, try file.length(io));
+    defer allocator.free(buf);
+    if (try file.readPositionalAll(io, buf, 0) != buf.len) return error.BadImageData;
+    var rgb: [*c]f32 = null;
+    var width: u32 = 0;
+    var height: u32 = 0;
+    var hdr: c_int = 0;
+    if (c.fmetrics_png_linear(buf.ptr, buf.len, &rgb, &width, &height, &hdr) != 0)
+        return error.InvalidPngColorData;
+    errdefer c.free(rgb);
+    var linear = try fmetrics.Image.initLinear(rgb[0 .. @as(usize, width) * height * 3], width, height);
+    linear.hdr = hdr != 0;
+    return .{
+        .width = width,
+        .height = height,
+        .hdr = hdr != 0,
+        .linear = linear,
+    };
+}
+
+const MetricImage = struct {
+    width: usize,
+    height: usize,
+    rgb: []const u8 = &.{},
+    linear: ?fmetrics.Image = null,
+    hdr: bool = false,
+
+    fn deinit(self: *MetricImage, allocator: std.mem.Allocator) void {
+        if (self.linear) |img| c.free(@constCast(img.data.ptr)) else allocator.free(self.rgb);
+    }
+};
+
+fn loadMetricImage(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !MetricImage {
+    if (try loadLinearPNG(allocator, io, path)) |img| return img;
+    var img = try loadImage(allocator, io, path);
+    defer img.deinit(allocator);
+    return .{ .width = img.width, .height = img.height, .rgb = try toRGB8(allocator, img) };
+}
+
 fn hasExtension(path: []const u8, ext: []const u8) bool {
     if (path.len < ext.len) return false;
     const tail = path[path.len - ext.len ..];
@@ -555,6 +598,18 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: imgio.Image) ![]u8 {
     return rgb;
 }
 
+fn cvvdpLinearImage(img: fmetrics.Image) c.FmetricsImg {
+    return .{
+        .data = img.data.ptr,
+        .hdr = img.hdr,
+        .width = img.width,
+        .height = img.height,
+        .stride = img.stride,
+        .format = c.FMETRICS_PIX_FMT_RGB_FLOAT,
+        .colorspace = c.FMETRICS_COLORSPACE_LINEAR_SRGB,
+    };
+}
+
 fn cvvdpImageFromRgb(
     rgb: []const u8,
     width: usize,
@@ -625,7 +680,7 @@ fn printUsage(metric: ?Metric) void {
             },
         }
         print(common_opts_str, .{});
-        print("\n\n\x1b[37msRGB PNG, PNM/PAM, QOI, or Y4M input expected\x1b[0m\n", .{});
+        print("\n\n\x1b[37mPNG, PNM/PAM, QOI, or Y4M input expected; HDR PNG supported by all metrics\x1b[0m\n", .{});
         return;
     }
 
@@ -642,7 +697,7 @@ fn printUsage(metric: ?Metric) void {
         \\  -h, --help
         \\      show this help message
     , .{});
-    print("\n\n\x1b[37msRGB PNG, PNM/PAM, QOI, or Y4M input expected\x1b[0m\n", .{});
+    print("\n\n\x1b[37mPNG, PNM/PAM, QOI, or Y4M input expected; HDR PNG supported by all metrics\x1b[0m\n", .{});
 }
 
 fn loadImage(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !imgio.Image {
@@ -718,6 +773,7 @@ pub fn main(init: std.process.Init) !void {
     var dis_filename: ?[]const u8 = null;
     var display_model: c.FmetricsCvvdpDisplayModel =
         c.FMETRICS_CVVDP_DISPLAY_STANDARD_FHD;
+    var explicit_display_model = false;
     var threads: c_uint = 0;
     var verbose = false;
     var json_output = false;
@@ -799,6 +855,7 @@ pub fn main(init: std.process.Init) !void {
                 return error.InvalidArguments;
             }
             if (args.next()) |model_arg| {
+                explicit_display_model = true;
                 display_model = parseDisplayModel(model_arg) orelse {
                     print("Error: Unknown CVVDP display model '{s}'\n", .{model_arg});
                     printUsage(metric);
@@ -852,10 +909,9 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (!ref_is_y4m) {
-        var ref_img = try loadImage(allocator, io, ref_filename.?);
+        var ref_img = try loadMetricImage(allocator, io, ref_filename.?);
         defer ref_img.deinit(allocator);
-
-        var dis_img = try loadImage(allocator, io, dis_filename.?);
+        var dis_img = try loadMetricImage(allocator, io, dis_filename.?);
         defer dis_img.deinit(allocator);
 
         if (ref_img.width != dis_img.width or ref_img.height != dis_img.height) {
@@ -865,18 +921,17 @@ pub fn main(init: std.process.Init) !void {
             return error.DimensionMismatch;
         }
 
-        const ref_rgb = try toRGB8(allocator, ref_img);
-        defer allocator.free(ref_rgb);
-
-        const dis_rgb = try toRGB8(allocator, dis_img);
-        defer allocator.free(dis_rgb);
+        const ref_rgb = ref_img.rgb;
+        const dis_rgb = dis_img.rgb;
 
         var result: f64 = undefined;
         var cvvdp_quality: ?f64 = null;
 
         if (metric == .cvvdp) {
-            var ref = cvvdpImageFromRgb(ref_rgb, ref_img.width, ref_img.height);
-            var dis = cvvdpImageFromRgb(dis_rgb, dis_img.width, dis_img.height);
+            if (!explicit_display_model and (ref_img.hdr or dis_img.hdr))
+                display_model = c.FMETRICS_CVVDP_DISPLAY_STANDARD_HDR_LINEAR;
+            var ref = if (ref_img.linear) |img| cvvdpLinearImage(img) else cvvdpImageFromRgb(ref_rgb, ref_img.width, ref_img.height);
+            var dis = if (dis_img.linear) |img| cvvdpLinearImage(img) else cvvdpImageFromRgb(dis_rgb, dis_img.width, dis_img.height);
             var cvvdp_result: c.FmetricsCvvdpResult = undefined;
             const err = c.fmetrics_cvvdp_cmp(
                 &ref,
@@ -920,8 +975,8 @@ pub fn main(init: std.process.Init) !void {
                 return;
             }
         } else {
-            const ref = try fmetricsImage(ref_rgb, ref_img.width, ref_img.height);
-            const dis = try fmetricsImage(dis_rgb, dis_img.width, dis_img.height);
+            const ref = ref_img.linear orelse try fmetricsImage(ref_rgb, ref_img.width, ref_img.height);
+            const dis = dis_img.linear orelse try fmetricsImage(dis_rgb, dis_img.width, dis_img.height);
 
             var error_map: ?[]u32 = null;
             defer if (error_map) |map| allocator.free(map);

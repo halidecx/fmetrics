@@ -19,6 +19,7 @@
 #include <stdlib.h>
 
 #include "../common/mem.h"
+#include "../common/color.h"
 #include "../common/util.h"
 #include "../fmetrics.h"
 
@@ -31,13 +32,10 @@ static FmetricsErr validate_pair(const FmetricsImg *const reference,
     {
         return FMETRICS_ERR_INVALID_ARGUMENT;
     }
-    if (reference->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        distorted->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        reference->colorspace != FMETRICS_COLORSPACE_SRGB ||
-        distorted->colorspace != FMETRICS_COLORSPACE_SRGB)
-    {
-        return FMETRICS_ERR_UNSUPPORTED_FORMAT;
-    }
+    const FmetricsErr ref_error = fmetrics_validate_rgb(reference);
+    if (ref_error != FMETRICS_OK) return ref_error;
+    const FmetricsErr dis_error = fmetrics_validate_rgb(distorted);
+    if (dis_error != FMETRICS_OK) return dis_error;
     if (reference->width != distorted->width ||
         reference->height != distorted->height)
     {
@@ -54,7 +52,7 @@ static FmetricsErr validate_pair(const FmetricsImg *const reference,
 }
 
 static bool load_luma(const FmetricsImg *const src, ImageD *const dst,
-                      ScratchBuffer *const scratch)
+                      ScratchBuffer *const scratch, const bool hdr)
 {
     if (!image_alloc(dst, (int)src->width, (int)src->height, scratch))
         return false;
@@ -67,7 +65,10 @@ static bool load_luma(const FmetricsImg *const src, ImageD *const dst,
         float *out = dst->data + y * (size_t)dst->width;
         for (size_t x = 0; x < src->width; x++) {
             const uint8_t *px = row + x * 3u;
-            out[x] = kr * px[0] + kg * px[1] + kb * px[2];
+            out[x] = hdr ? fmetrics_pq_luma(src, x, y) :
+                fmetrics_is_linear(src) ?
+                (float)(fmetrics_sdr_luma(src, x, y) / 255.0) :
+                kr * px[0] + kg * px[1] + kb * px[2];
         }
     }
     return true;
@@ -268,8 +269,9 @@ FmetricsErr fmetrics_msssim_cmp(FmetricsWorkspace *const workspace,
     ScratchBuffer *const scratch = &workspace->scratch;
 
     ImageD img1 = {0}, img2 = {0};
-    if (!load_luma(reference, &img1, scratch) ||
-        !load_luma(distorted, &img2, scratch))
+    const bool hdr = reference->hdr || distorted->hdr;
+    if (!load_luma(reference, &img1, scratch, hdr) ||
+        !load_luma(distorted, &img2, scratch, hdr))
     {
         return FMETRICS_ERR_OUT_OF_MEMORY;
     }

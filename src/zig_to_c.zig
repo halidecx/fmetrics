@@ -31,19 +31,19 @@ fn validate(
     const dist = distorted orelse return c.FMETRICS_ERR_INVALID_ARGUMENT;
     if (ref.data == null or dist.data == null)
         return c.FMETRICS_ERR_INVALID_ARGUMENT;
-    if (ref.format != c.FMETRICS_PIX_FMT_RGB_UINT8 or
-        dist.format != c.FMETRICS_PIX_FMT_RGB_UINT8 or
-        ref.colorspace != c.FMETRICS_COLORSPACE_SRGB or
-        dist.colorspace != c.FMETRICS_COLORSPACE_SRGB)
-    {
-        return c.FMETRICS_ERR_UNSUPPORTED_FORMAT;
+    for ([_]*const c.FmetricsImg{ ref, dist }) |img| {
+        if (!((img.format == c.FMETRICS_PIX_FMT_RGB_UINT8 and
+            img.colorspace == c.FMETRICS_COLORSPACE_SRGB) or
+            (img.format == c.FMETRICS_PIX_FMT_RGB_FLOAT and
+                img.colorspace == c.FMETRICS_COLORSPACE_LINEAR_SRGB)))
+            return c.FMETRICS_ERR_UNSUPPORTED_FORMAT;
+        const row_bytes = @as(usize, img.width) *
+            @as(usize, if (img.format == c.FMETRICS_PIX_FMT_RGB_FLOAT) 12 else 3);
+        if (img.stride < row_bytes) return c.FMETRICS_ERR_INVALID_ARGUMENT;
     }
     if (ref.width != dist.width or ref.height != dist.height)
         return c.FMETRICS_ERR_DIMENSION_MISMATCH;
     if (ref.width == 0 or ref.height == 0)
-        return c.FMETRICS_ERR_INVALID_ARGUMENT;
-    const row_bytes = @as(usize, ref.width) * 3;
-    if (ref.stride < row_bytes or dist.stride < row_bytes)
         return c.FMETRICS_ERR_INVALID_ARGUMENT;
     return c.FMETRICS_OK;
 }
@@ -117,6 +117,34 @@ fn compute(
     const planes = @as([*]f16, @ptrCast(@alignCast(bytes)))[0..planes_len];
     const temp = @as([*]f32, @ptrCast(@alignCast(bytes + temp_off)))[0..temp_len];
     const scratch = @as([*]f32, @ptrCast(@alignCast(bytes + scratch_off)))[0..scratch_len];
+    if (ref.format == c.FMETRICS_PIX_FMT_RGB_FLOAT or
+        dist.format == c.FMETRICS_PIX_FMT_RGB_FLOAT)
+    {
+        const float_planes = temp[0 .. pixels * 6];
+        for ([_]*const c.FmetricsImg{ ref, dist }, 0..) |img, image_index| {
+            const src: [*]const u8 = @ptrCast(img.data.?);
+            for (0..img.height) |y| {
+                for (0..img.width) |x| {
+                    for (0..3) |ch| {
+                        const value = if (img.format == c.FMETRICS_PIX_FMT_RGB_FLOAT) blk: {
+                            const offset = y * img.stride + (x * 3 + ch) * 4;
+                            const v: f32 = @bitCast(std.mem.readInt(u32, src[offset..][0..4], @import("builtin").cpu.arch.endian()));
+                            if (!std.math.isFinite(v)) return c.FMETRICS_ERR_INVALID_ARGUMENT;
+                            break :blk v;
+                        } else blk: {
+                            const v: f32 = @as(f32, @floatFromInt(src[y * img.stride + x * 3 + ch])) / 255.0;
+                            break :blk if (v <= 0.04045) v / 12.92 else std.math.pow(f32, (v + 0.055) / 1.055, 2.4);
+                        };
+                        float_planes[(image_index * 3 + ch) * pixels + y * img.width + x] = value;
+                    }
+                }
+            }
+        }
+        const rp: [3][]const f32 = .{ float_planes[0..pixels], float_planes[pixels .. pixels * 2], float_planes[pixels * 2 .. pixels * 3] };
+        const dp: [3][]const f32 = .{ float_planes[pixels * 3 .. pixels * 4], float_planes[pixels * 4 .. pixels * 5], float_planes[pixels * 5 .. pixels * 6] };
+        out.* = ssimu2.processWithScratch(rp, dp, ref.width, ref.width, ref.height, if (error_map) |map| map[0..pixels] else null, temp, scratch);
+        return c.FMETRICS_OK;
+    }
     const ref_slice = packedImage(ref, (bytes + ref_off)[0..packed_len]);
     const dist_slice = packedImage(dist, (bytes + dist_off)[0..packed_len]);
     const map_slice = if (error_map) |map| map[0..pixels] else null;

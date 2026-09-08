@@ -55,6 +55,7 @@ typedef enum FmetricsPixFmt {
 
 typedef enum FmetricsColorspace {
     FMETRICS_COLORSPACE_SRGB = 1,
+    FMETRICS_COLORSPACE_LINEAR_SRGB = 2,
 } FmetricsColorspace;
 
 typedef struct FmetricsImg {
@@ -62,6 +63,7 @@ typedef struct FmetricsImg {
     uint32_t width, height, stride;
     FmetricsPixFmt format;
     FmetricsColorspace colorspace;
+    bool hdr;
 } FmetricsImg;
 
 typedef struct FmetricsButteraugliOptions {

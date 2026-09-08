@@ -998,9 +998,9 @@ fn process(
     return processWithScratch(srcp1, srcp2, stride, w, h, error_map, temp_alloc, scratch);
 }
 
-fn processWithScratch(
-    srcp1: [3][]const f16,
-    srcp2: [3][]const f16,
+pub fn processWithScratch(
+    srcp1: anytype,
+    srcp2: anytype,
     stride: u32,
     w: u32,
     h: u32,

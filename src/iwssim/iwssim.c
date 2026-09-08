@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "../common/color.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -57,13 +58,10 @@ static FmetricsErr validate_image_pair(const FmetricsImg *const reference,
     {
         return FMETRICS_ERR_INVALID_ARGUMENT;
     }
-    if (reference->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        distorted->format != FMETRICS_PIX_FMT_RGB_UINT8 ||
-        reference->colorspace != FMETRICS_COLORSPACE_SRGB ||
-        distorted->colorspace != FMETRICS_COLORSPACE_SRGB)
-    {
-        return FMETRICS_ERR_UNSUPPORTED_FORMAT;
-    }
+    const FmetricsErr ref_error = fmetrics_validate_rgb(reference);
+    if (ref_error != FMETRICS_OK) return ref_error;
+    const FmetricsErr dis_error = fmetrics_validate_rgb(distorted);
+    if (dis_error != FMETRICS_OK) return dis_error;
     if (reference->width != distorted->width ||
         reference->height != distorted->height)
     {
@@ -80,7 +78,7 @@ static FmetricsErr validate_image_pair(const FmetricsImg *const reference,
 }
 
 static bool rgb_to_luma(const FmetricsImg *const src, ImageD *const dst,
-                        ScratchBuffer *const scratch)
+                        ScratchBuffer *const scratch, const bool hdr)
 {
     if (!image_alloc(dst, (int)src->width, (int)src->height, scratch))
         return false;
@@ -90,6 +88,9 @@ static bool rgb_to_luma(const FmetricsImg *const src, ImageD *const dst,
         for (size_t x = 0; x < src->width; x++) {
             const uint8_t *px = row + x * 3u;
             dst->data[y * (size_t)dst->width + x] =
+                hdr ? 255.0f * fmetrics_pq_luma(src, x, y) :
+                fmetrics_is_linear(src) ?
+                (float)fmetrics_sdr_luma(src, x, y) :
                 (float)(0.299 * (double)px[0] + 0.587 *
                         (double)px[1] + 0.114 * (double)px[2]);
         }
@@ -1182,8 +1183,9 @@ FmetricsErr fmetrics_iwssim_cmp(FmetricsWorkspace *const workspace,
     ImageD ref_luma = {0}, dis_luma = {0};
     FmetricsErr err = FMETRICS_OK;
 
-    if (!rgb_to_luma(reference, &ref_luma, scratch) ||
-        !rgb_to_luma(distorted, &dis_luma, scratch)) {
+    const bool hdr = reference->hdr || distorted->hdr;
+    if (!rgb_to_luma(reference, &ref_luma, scratch, hdr) ||
+        !rgb_to_luma(distorted, &dis_luma, scratch, hdr)) {
         err = FMETRICS_ERR_OUT_OF_MEMORY;
         return err;
     }

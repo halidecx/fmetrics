@@ -36,6 +36,13 @@ pub fn build(b: *std.Build) void {
     const spng = spng_dep.artifact("spng");
     spng.lto = if (flto) .thin else null;
 
+    const lcms2_dep = b.dependency("lcms2", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const lcms2 = lcms2_dep.artifact("lcms2");
+    lcms2.lto = if (flto) .thin else null;
+
     // fcvvdp
     const fcvvdp_dep = b.dependency("fcvvdp", .{
         .target = target,
@@ -139,6 +146,8 @@ pub fn build(b: *std.Build) void {
     bin.root_module.addImport("fmetrics", fmetrics_module);
     bin.root_module.addImport("simpleimgio", simpleimgio);
     bin.root_module.addIncludePath(b.path("."));
+    bin.root_module.addCSourceFile(.{ .file = b.path("src/common/png.c"), .flags = &.{ "-std=c23", "-Wall", "-Wextra" } });
+    bin.root_module.linkLibrary(lcms2);
     bin.root_module.linkLibrary(lib);
     bin.root_module.linkLibrary(spng);
     b.installArtifact(bin);

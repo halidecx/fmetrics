@@ -41,6 +41,17 @@ class DisplayModel(IntEnum):
     CID22_MCOS = 26
 
 
+def _display_model(value: int | str | DisplayModel) -> DisplayModel:
+    if isinstance(value, str):
+        try:
+            return DisplayModel[value.upper()]
+        except KeyError:
+            raise ValueError(
+                f"unknown CVVDP display model: {value}"
+            ) from None
+    return DisplayModel(value)
+
+
 class Workspace:
     def __init__(self) -> None:
         self._handle = _native.workspace_create()
@@ -94,6 +105,52 @@ class Workspace:
                 pnorm,
             )
         )
+
+
+class Cvvdp:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        fps: float,
+        display_model: int | str | DisplayModel = DisplayModel.STANDARD_FHD,
+        threads: int = 0,
+    ) -> None:
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.display_model = _display_model(display_model)
+        self.threads = threads
+        self._handle = _native.cvvdp_create(
+            width,
+            height,
+            fps,
+            int(self.display_model),
+            threads,
+        )
+
+    def process_frame(
+        self,
+        reference: Any,
+        distorted: Any,
+    ) -> tuple[float, float]:
+        return _native.cvvdp_process_frame(
+            self._handle,
+            reference,
+            distorted,
+        )
+
+    def reset(self) -> None:
+        _native.cvvdp_reset(self._handle)
+
+    def close(self) -> None:
+        _native.cvvdp_close(self._handle)
+
+    def __enter__(self) -> Cvvdp:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
 
 
 def _map_result(result: tuple[float, bytearray, int, int]) -> tuple[
@@ -161,25 +218,32 @@ def butteraugli_map(
 def cvvdp(
     reference: Any,
     distorted: Any,
-    display_model: int | DisplayModel = DisplayModel.STANDARD_FHD,
+    display_model: int | str | DisplayModel = DisplayModel.STANDARD_FHD,
     threads: int = 0,
 ) -> tuple[float, float]:
+    model = _display_model(display_model)
     return _native.cvvdp(
         reference,
         distorted,
-        int(display_model),
+        int(model),
         threads,
     )
 
 
+def cvvdp_version() -> str:
+    return _native.cvvdp_version()
+
+
 __all__ = [
     "Error",
+    "Cvvdp",
     "DisplayModel",
     "Workspace",
     "__version__",
     "butteraugli",
     "butteraugli_map",
     "cvvdp",
+    "cvvdp_version",
     "iwssim",
     "msssim",
     "ssimu2",

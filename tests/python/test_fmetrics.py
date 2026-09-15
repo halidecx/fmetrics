@@ -47,6 +47,47 @@ def test_distorted_images(images):
     assert all(math.isfinite(score) for score in scores)
 
 
+def test_cvvdp_sequence(images):
+    reference, distorted = images
+    with fmetrics.Cvvdp(
+        192,
+        192,
+        24.0,
+        display_model="standard_fhd",
+        threads=2,
+    ) as metric:
+        first = metric.process_frame(reference, reference)
+        final = metric.process_frame(reference, distorted)
+        assert first == pytest.approx((10.0, 0.0))
+        assert all(math.isfinite(value) for value in final)
+        metric.reset()
+        assert metric.process_frame(reference, reference) == pytest.approx(
+            first
+        )
+        assert metric.process_frame(reference, distorted) == pytest.approx(
+            final
+        )
+    with pytest.raises(RuntimeError, match="closed"):
+        metric.process_frame(reference, distorted)
+
+
+def test_cvvdp_sequence_dimensions(images):
+    reference, distorted = images
+    metric = fmetrics.Cvvdp(191, 192, 24.0)
+    with pytest.raises(fmetrics.Error, match="dimensions"):
+        metric.process_frame(reference, distorted)
+
+
+def test_cvvdp_version():
+    assert fmetrics.cvvdp_version()
+
+
+def test_cvvdp_invalid_display(images):
+    reference, distorted = images
+    with pytest.raises(ValueError, match="unknown CVVDP display model"):
+        fmetrics.cvvdp(reference, distorted, "unknown")
+
+
 def test_workspace_and_maps(images):
     reference, distorted = images
     workspace = fmetrics.Workspace()

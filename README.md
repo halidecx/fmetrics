@@ -42,7 +42,27 @@ score = workspace.ssimu2(reference, distorted)
 ```
 
 Select a CVVDP display with `fmetrics.DisplayModel`, for example
-`fmetrics.DisplayModel.MACBOOK_PRO_16`.
+`fmetrics.DisplayModel.MACBOOK_PRO_16`. Lowercase preset strings such as
+`"standard_fhd"` and `"standard_4k"` are also accepted.
+
+For video, preserve CVVDP's temporal state by processing contiguous frames
+through a sequence context. Each result is the cumulative score through that
+frame, so the last result is the aggregate for the complete sequence.
+
+```python
+with fmetrics.Cvvdp(
+    width=1920,
+    height=1080,
+    fps=60.0,
+    display_model=fmetrics.DisplayModel.STANDARD_FHD,
+    threads=8,
+) as metric:
+    for reference, distorted in frame_pairs:
+        jod, quality = metric.process_frame(reference, distorted)
+```
+
+Call `reset()` before reusing a context for a separate sequence. The native
+CVVDP implementation version is available from `fmetrics.cvvdp_version()`.
 
 Python 3.11 or newer is required. Binary wheels are provided for Linux and
 macOS on x86-64 and ARM64. Building from source requires the dependencies in

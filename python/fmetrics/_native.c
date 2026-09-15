@@ -6,6 +6,8 @@
 #include "fmetrics.h"
 
 #define WORKSPACE_CAPSULE "fmetrics.Workspace"
+#define CVVDP_CAPSULE "fmetrics.Cvvdp"
+#define CVVDP_CLOSED "fmetrics.Cvvdp.closed"
 
 typedef struct ImageView {
     Py_buffer view;
@@ -29,6 +31,21 @@ static void workspace_destroy(PyObject *capsule) {
 
 static FmetricsWorkspace *workspace_get(PyObject *capsule) {
     return PyCapsule_GetPointer(capsule, WORKSPACE_CAPSULE);
+}
+
+static void cvvdp_destroy(PyObject *capsule) {
+    FmetricsCvvdpCtx *context = PyCapsule_GetPointer(
+        capsule, CVVDP_CAPSULE);
+    if (context) fmetrics_cvvdp_destroy(context);
+}
+
+static FmetricsCvvdpCtx *cvvdp_get(PyObject *capsule) {
+    if (PyCapsule_IsValid(capsule, CVVDP_CAPSULE))
+        return PyCapsule_GetPointer(capsule, CVVDP_CAPSULE);
+    if (PyCapsule_IsValid(capsule, CVVDP_CLOSED))
+        PyErr_SetString(PyExc_RuntimeError, "CVVDP context is closed");
+    else PyErr_SetString(PyExc_TypeError, "expected a CVVDP context");
+    return NULL;
 }
 
 static PyObject *raise_fmetrics(const FmetricsErr error) {
@@ -288,6 +305,83 @@ static PyObject *py_cvvdp(PyObject *self, PyObject *args) {
     return Py_BuildValue("(dd)", result.jod, result.quality);
 }
 
+static PyObject *cvvdp_create(PyObject *self, PyObject *args) {
+    (void)self;
+    int width, height;
+    double fps;
+    int display_model = FMETRICS_CVVDP_DISPLAY_STANDARD_FHD;
+    unsigned threads = 0;
+    if (!PyArg_ParseTuple(
+        args, "iid|iI", &width, &height, &fps,
+        &display_model, &threads)) return NULL;
+    FmetricsCvvdpCtx *context = NULL;
+    FmetricsErr error;
+    Py_BEGIN_ALLOW_THREADS
+    error = fmetrics_cvvdp_create(
+        width, height, (float)fps, display_model, threads, NULL, &context);
+    Py_END_ALLOW_THREADS
+    if (error != FMETRICS_OK) return raise_fmetrics(error);
+    PyObject *capsule = PyCapsule_New(
+        context, CVVDP_CAPSULE, cvvdp_destroy);
+    if (capsule) return capsule;
+    fmetrics_cvvdp_destroy(context);
+    return NULL;
+}
+
+static PyObject *cvvdp_process_frame(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *capsule, *reference, *distorted;
+    if (!PyArg_ParseTuple(
+        args, "OOO", &capsule, &reference, &distorted)) return NULL;
+    FmetricsCvvdpCtx *context = cvvdp_get(capsule);
+    if (!context) return NULL;
+    ImageView ref, dist;
+    if (images_get(reference, distorted, &ref, &dist) < 0) return NULL;
+    FmetricsCvvdpResult result;
+    FmetricsErr error;
+    Py_BEGIN_ALLOW_THREADS
+    error = fmetrics_cvvdp_process_frame(
+        context, &ref.image, &dist.image, &result);
+    Py_END_ALLOW_THREADS
+    image_release(&ref);
+    image_release(&dist);
+    if (error != FMETRICS_OK) return raise_fmetrics(error);
+    return Py_BuildValue("(dd)", result.jod, result.quality);
+}
+
+static PyObject *cvvdp_reset(PyObject *self, PyObject *capsule) {
+    (void)self;
+    FmetricsCvvdpCtx *context = cvvdp_get(capsule);
+    if (!context) return NULL;
+    FmetricsErr error;
+    Py_BEGIN_ALLOW_THREADS
+    error = fmetrics_cvvdp_reset(context);
+    Py_END_ALLOW_THREADS
+    if (error != FMETRICS_OK) return raise_fmetrics(error);
+    Py_RETURN_NONE;
+}
+
+static PyObject *cvvdp_close(PyObject *self, PyObject *capsule) {
+    (void)self;
+    if (PyCapsule_IsValid(capsule, CVVDP_CLOSED)) Py_RETURN_NONE;
+    FmetricsCvvdpCtx *context = cvvdp_get(capsule);
+    if (!context) return NULL;
+    if (PyCapsule_SetDestructor(capsule, NULL) < 0) return NULL;
+    if (PyCapsule_SetName(capsule, CVVDP_CLOSED) < 0) {
+        PyCapsule_SetDestructor(capsule, cvvdp_destroy);
+        return NULL;
+    }
+    fmetrics_cvvdp_destroy(context);
+    Py_RETURN_NONE;
+}
+
+static PyObject *cvvdp_version(
+    PyObject *self, PyObject *Py_UNUSED(args))
+{
+    (void)self;
+    return PyUnicode_FromString(fmetrics_cvvdp_version_str());
+}
+
 static PyObject *py_version(PyObject *self, PyObject *Py_UNUSED(args)) {
     (void)self;
     return PyUnicode_FromString(fmetrics_version_str());
@@ -302,6 +396,11 @@ static PyMethodDef methods[] = {
     {"butteraugli", py_butteraugli, METH_VARARGS, NULL},
     {"butteraugli_map", py_butteraugli_map, METH_VARARGS, NULL},
     {"cvvdp", py_cvvdp, METH_VARARGS, NULL},
+    {"cvvdp_create", cvvdp_create, METH_VARARGS, NULL},
+    {"cvvdp_process_frame", cvvdp_process_frame, METH_VARARGS, NULL},
+    {"cvvdp_reset", cvvdp_reset, METH_O, NULL},
+    {"cvvdp_close", cvvdp_close, METH_O, NULL},
+    {"cvvdp_version", cvvdp_version, METH_NOARGS, NULL},
     {"version", py_version, METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL},
 };

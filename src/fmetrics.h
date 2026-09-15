@@ -25,17 +25,12 @@
 extern "C" {
 #endif
 
-/* Version */
-static const char* FMETRICS_VERSION = "0.0.2";
-
 /**
  * Get version string
  *
  * @return Version string (e.g., "X.Y.Z")
  */
-static const char* fmetrics_version_str(void) {
-    return FMETRICS_VERSION;
-}
+const char *fmetrics_version_str(void);
 
 typedef enum FmetricsErr {
     FMETRICS_OK = 0,

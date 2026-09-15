@@ -3,3 +3,8 @@ zig-out/
 zig-pkg/
 *.o
 test/
+__pycache__/
+*.egg-info/
+*.pyc
+build/
+dist/

@@ -13,11 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 const std = @import("std");
+const build_opts = @import("build_opts");
 const c = @cImport({
     @cInclude("fmetrics.h");
 });
 
-pub const version = "0.0.2";
+pub const version = build_opts.version;
 
 pub const Error = error{
     InvalidArgument,

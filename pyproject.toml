@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=77", "wheel>=0.45", "ziglang==0.16.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "image-fmetrics"
+dynamic = ["version"]
+description = "Fast image and video fidelity metrics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Halide Compression, LLC" }]
+keywords = [
+    "image-quality",
+    "video-quality",
+    "ssim",
+    "butteraugli",
+    "cvvdp",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.optional-dependencies]
+numpy = ["numpy>=1.23"]
+test = ["numpy>=1.23", "pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/halidecx/fmetrics"
+Documentation = "https://github.com/halidecx/fmetrics/wiki"
+Issues = "https://github.com/halidecx/fmetrics/issues"
+Source = "https://github.com/halidecx/fmetrics"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.setuptools.package-data]
+fmetrics = ["py.typed"]
+
+[tool.setuptools.exclude-package-data]
+fmetrics = ["_native.c"]
+
+[tool.cibuildwheel]
+build = "cp311-*"
+skip = "*-musllinux_*"
+test-requires = ["numpy>=1.23", "pytest>=8"]
+test-command = "pytest {project}/tests/python"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]

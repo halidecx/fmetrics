@@ -20,6 +20,19 @@ pub fn build(b: *std.Build) void {
     const strip = b.option(bool, "strip", "strip symbols from the binary, defaults to false") orelse false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
     const options = b.addOptions();
+    const zon = b.build_root.handle.readFileAlloc(
+        b.graph.io,
+        "build.zig.zon",
+        b.allocator,
+        .limited(1 << 20),
+    ) catch @panic("failed to read build.zig.zon");
+    const marker = ".version = \"";
+    const start = std.mem.indexOf(u8, zon, marker) orelse
+        @panic("missing version");
+    const value = zon[start + marker.len ..];
+    const end = std.mem.indexOfScalar(u8, value, '"') orelse
+        @panic("invalid version");
+    options.addOption([]const u8, "version", value[0..end]);
 
     // simpleimgio
     const simpleimgio_dep = b.dependency("simpleimgio", .{
@@ -58,6 +71,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    fmetrics_module.addOptions("build_opts", options);
     fmetrics_module.addIncludePath(b.path("src"));
 
     const translate_c = b.addTranslateC(.{
@@ -81,6 +95,8 @@ pub fn build(b: *std.Build) void {
             .strip = strip,
         }),
     });
+    lib.root_module.addOptions("build_opts", options);
+    lib.root_module.pic = true;
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
         "src/fmetrics_cvvdp.c",
@@ -110,10 +126,29 @@ pub fn build(b: *std.Build) void {
         .flags = &lib_flags,
     });
     if (target.result.cpu.arch == .x86_64) {
-        lib.root_module.addCSourceFile(.{
-            .file = fcvvdp_dep.path("src/cvvdp_avx2.c"),
-            .flags = &lib_flags,
+        var avx_query = target.query;
+        avx_query.cpu_features_add.addFeature(
+            @intFromEnum(std.Target.x86.Feature.avx2),
+        );
+        avx_query.cpu_features_add.addFeature(
+            @intFromEnum(std.Target.x86.Feature.fma),
+        );
+        const avx = b.addObject(.{
+            .name = "cvvdp_avx2",
+            .root_module = b.createModule(.{
+                .target = b.resolveTargetQuery(avx_query),
+                .optimize = optimize,
+                .link_libc = true,
+            }),
         });
+        const avx_flags = lib_flags ++
+            [_][]const u8{"-Wno-unused-function"};
+        avx.root_module.addCSourceFile(.{
+            .file = fcvvdp_dep.path("src/cvvdp_avx2.c"),
+            .flags = &avx_flags,
+        });
+        avx.root_module.addIncludePath(fcvvdp_dep.path("src"));
+        lib.root_module.addObject(avx);
     } else if (target.result.cpu.arch == .aarch64) {
         lib.root_module.addCSourceFile(.{
             .file = fcvvdp_dep.path("src/cvvdp_neon.c"),

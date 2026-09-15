@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 const std = @import("std");
+const build_opts = @import("build_opts");
 const ssimu2 = @import("ssimulacra2/ssimulacra2.zig");
 const c = @cImport({
     @cInclude("src/fmetrics.h");
@@ -22,6 +23,11 @@ extern fn fmetrics_workspace_reserve_data(
     workspace: ?*c.FmetricsWorkspace,
     size: usize,
 ) ?*anyopaque;
+
+export fn fmetrics_version_str() callconv(.c) [*:0]const u8 {
+    const version = build_opts.version ++ "\x00";
+    return version.ptr;
+}
 
 fn validate(
     reference: ?*const c.FmetricsImg,

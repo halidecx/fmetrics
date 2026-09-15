@@ -1,0 +1,8 @@
+include build.zig
+include build.zig.zon
+include c_imports.h
+include LICENSE
+include README.md
+recursive-include python *.c *.py py.typed
+recursive-include src *.c *.h *.zig
+recursive-include tests *.py

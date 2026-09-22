@@ -346,6 +346,8 @@ const VideoWorker = struct {
     dis_rgb: []u8,
     butteraugli_options: fmetrics.ButteraugliOptions,
     workspace: fmetrics.Workspace,
+    converter: imgio.YuvRgbConverter,
+    linear: []f32,
     err: ?anyerror = null,
 
     fn init(
@@ -362,6 +364,10 @@ const VideoWorker = struct {
         errdefer allocator.free(ref_rgb);
         const dis_rgb = try allocator.alloc(u8, pixels * 3);
         errdefer allocator.free(dis_rgb);
+        var converter = try imgio.YuvRgbConverter.init(allocator, width, height);
+        errdefer converter.deinit();
+        const linear = try allocator.alloc(f32, pixels * 3);
+        errdefer allocator.free(linear);
         var workspace = try fmetrics.Workspace.init();
         errdefer workspace.deinit();
         return .{
@@ -375,18 +381,22 @@ const VideoWorker = struct {
             .dis_rgb = dis_rgb,
             .butteraugli_options = butteraugli_options,
             .workspace = workspace,
+            .converter = converter,
+            .linear = linear,
         };
     }
 
     fn deinit(self: *VideoWorker) void {
         self.workspace.deinit();
+        self.converter.deinit();
+        self.allocator.free(self.linear);
         self.allocator.free(self.ref_rgb);
         self.allocator.free(self.dis_rgb);
     }
 
     fn processFrames(self: *VideoWorker, ref_frame: imgio.YuvFrame, dis_frame: imgio.YuvFrame) !void {
-        try yuv420ToRgb8Into(self.allocator, self.ref_rgb, ref_frame);
-        try yuv420ToRgb8Into(self.allocator, self.dis_rgb, dis_frame);
+        try yuv420ToRgb8Into(&self.converter, self.linear, self.ref_rgb, ref_frame);
+        try yuv420ToRgb8Into(&self.converter, self.linear, self.dis_rgb, dis_frame);
 
         const ref = try fmetricsImage(self.ref_rgb, self.width, self.height);
         const dis = try fmetricsImage(self.dis_rgb, self.width, self.height);
@@ -511,50 +521,13 @@ fn hasExtension(path: []const u8, ext: []const u8) bool {
     return std.ascii.eqlIgnoreCase(tail, ext);
 }
 
-fn yuv420ToRgb8Into(allocator: std.mem.Allocator, rgb: []u8, frame: imgio.YuvFrame) !void {
-    if (frame.chroma != .yuv420) return error.UnsupportedY4MChroma;
-
-    var converted: ?imgio.YuvFrame = null;
-    defer if (converted) |*eight| eight.deinit(allocator);
-    const eight = if (frame.bit_depth == .b8) frame else blk: {
-        converted = try frame.to8Bit(allocator);
-        break :blk converted.?;
-    };
-
-    const width = eight.width;
-    const height = eight.height;
-    if (rgb.len < width * height * 3) return error.BadImageData;
-
-    // Convert to RGB8 using a simple full-range BT.601-like YUV->RGB.
-    // This is intended for metric input, not broadcast-accurate color management.
-    const cw = (width + 1) / 2;
-
-    const clampU8 = struct {
-        fn f(x: i32) u8 {
-            if (x < 0) return 0;
-            if (x > 255) return 255;
-            return @intCast(x);
-        }
-    }.f;
-
-    for (0..height) |yy| {
-        for (0..width) |xx| {
-            const yv: i32 = eight.y[yy * width + xx];
-            const uv: i32 = eight.u[(yy / 2) * cw + (xx / 2)];
-            const vv: i32 = eight.v[(yy / 2) * cw + (xx / 2)];
-
-            const u_off = uv - 128;
-            const v_off = vv - 128;
-
-            const r = yv + ((359 * v_off) >> 8);
-            const g = yv - ((88 * u_off + 183 * v_off) >> 8);
-            const b = yv + ((454 * u_off) >> 8);
-
-            const i = (yy * width + xx) * 3;
-            rgb[i + 0] = clampU8(r);
-            rgb[i + 1] = clampU8(g);
-            rgb[i + 2] = clampU8(b);
-        }
+fn yuv420ToRgb8Into(converter: *imgio.YuvRgbConverter, linear: []f32, rgb: []u8, frame: imgio.YuvFrame) !void {
+    // Convert to sRGB8 after range expansion and chroma reconstruction.
+    // Linear RGB keeps the source bit depth until the final quantization.
+    try converter.convert(frame, linear);
+    for (linear, rgb) |v, *dst| {
+        const encoded = if (v <= 0.0031308) v * 12.92 else 1.055 * std.math.pow(f32, v, 1.0 / 2.4) - 0.055;
+        dst.* = @intFromFloat(@round(std.math.clamp(encoded, 0, 1) * 255));
     }
 }
 
@@ -605,6 +578,17 @@ fn cvvdpLinearImage(img: fmetrics.Image) c.FmetricsImg {
         .width = img.width,
         .height = img.height,
         .stride = img.stride,
+        .format = c.FMETRICS_PIX_FMT_RGB_FLOAT,
+        .colorspace = c.FMETRICS_COLORSPACE_LINEAR_SRGB,
+    };
+}
+
+fn cvvdpImageFromLinearRgb(rgb: []const f32, width: usize, height: usize) c.FmetricsImg {
+    return .{
+        .data = rgb.ptr,
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .stride = @intCast(width * 3 * @sizeOf(f32)),
         .format = c.FMETRICS_PIX_FMT_RGB_FLOAT,
         .colorspace = c.FMETRICS_COLORSPACE_LINEAR_SRGB,
     };
@@ -1113,10 +1097,13 @@ pub fn main(init: std.process.Init) !void {
         defer c.fmetrics_cvvdp_destroy(ctx_ptr.?);
 
         const pixels = try std.math.mul(usize, ref_dec.header.width, ref_dec.header.height);
-        const ref_rgb = try allocator.alloc(u8, pixels * 3);
+        const ref_rgb = try allocator.alloc(f32, pixels * 3);
         defer allocator.free(ref_rgb);
-        const dis_rgb = try allocator.alloc(u8, pixels * 3);
+        const dis_rgb = try allocator.alloc(f32, pixels * 3);
         defer allocator.free(dis_rgb);
+
+        var converter = try imgio.YuvRgbConverter.init(allocator, ref_dec.header.width, ref_dec.header.height);
+        defer converter.deinit();
 
         var cvvdp_result: c.FmetricsCvvdpResult = undefined;
 
@@ -1144,11 +1131,11 @@ pub fn main(init: std.process.Init) !void {
                 var dis_frame = dis_frame_opt.?;
                 defer dis_frame.deinit(allocator);
 
-                try yuv420ToRgb8Into(allocator, ref_rgb, ref_frame);
-                try yuv420ToRgb8Into(allocator, dis_rgb, dis_frame);
+                try converter.convert(ref_frame, ref_rgb);
+                try converter.convert(dis_frame, dis_rgb);
 
-                var ref = cvvdpImageFromRgb(ref_rgb, ref_frame.width, ref_frame.height);
-                var dis = cvvdpImageFromRgb(dis_rgb, dis_frame.width, dis_frame.height);
+                var ref = cvvdpImageFromLinearRgb(ref_rgb, ref_frame.width, ref_frame.height);
+                var dis = cvvdpImageFromLinearRgb(dis_rgb, dis_frame.width, dis_frame.height);
                 const proc_err = c.fmetrics_cvvdp_process_frame(
                     ctx_ptr.?,
                     &ref,

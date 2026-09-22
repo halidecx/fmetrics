@@ -5,87 +5,6 @@ Fast image & video fidelity metrics in C & Zig.
 Read the [wiki](https://github.com/halidecx/fmetrics/wiki) for comprehensive
 documentation (library usage, speed testing, MOS correlation, etc).
 
-## Python
-
-Install the Python bindings from PyPI:
-
-```sh
-python -m pip install "image-fmetrics[numpy]"
-```
-
-NumPy is optional; install `image-fmetrics` without the extra when using other
-buffer-protocol objects.
-
-The package accepts interleaved `HxWx3` buffer objects, including NumPy
-arrays. `uint8` data is interpreted as sRGB and `float32` data as linear sRGB.
-CVVDP additionally accepts `uint16` sRGB data.
-
-```python
-import fmetrics
-import numpy as np
-
-reference = np.zeros((512, 512, 3), dtype=np.uint8)
-distorted = reference.copy()
-score = fmetrics.ssimu2(reference, distorted)
-```
-
-Available functions are `iwssim`, `msssim`, `ssimu2`, `butteraugli`, and
-`cvvdp`. CVVDP returns `(jod, quality)`. The `ssimu2_map` and
-`butteraugli_map` functions return `(score, error_map)`, where `error_map` is a
-two-dimensional `memoryview` of unsigned 32-bit values.
-
-Use a workspace to reuse scratch memory across calls:
-
-```python
-workspace = fmetrics.Workspace()
-score = workspace.ssimu2(reference, distorted)
-```
-
-Select a CVVDP display with `fmetrics.DisplayModel`, for example
-`fmetrics.DisplayModel.MACBOOK_PRO_16`. Lowercase preset strings such as
-`"standard_fhd"` and `"standard_4k"` are also accepted.
-
-For video, preserve CVVDP's temporal state by processing contiguous frames
-through a sequence context. Each result is the cumulative score through that
-frame, so the last result is the aggregate for the complete sequence.
-
-```python
-with fmetrics.Cvvdp(
-    width=1920,
-    height=1080,
-    fps=60.0,
-    display_model=fmetrics.DisplayModel.STANDARD_FHD,
-    threads=8,
-) as metric:
-    for reference, distorted in frame_pairs:
-        jod, quality = metric.process_frame(reference, distorted)
-```
-
-Call `reset()` before reusing a context for a separate sequence. The native
-CVVDP implementation version is available from `fmetrics.cvvdp_version()`.
-
-Python 3.11 or newer is required. Binary wheels are provided for Linux and
-macOS on x86-64 and ARM64. Building from source requires the dependencies in
-`pyproject.toml`; the isolated build environment supplies Zig 0.16.0.
-
-## Publishing to PyPI
-
-The distribution name is `image-fmetrics`. Configure pending trusted
-publishers on PyPI and TestPyPI for `.github/workflows/release.yml`. Use the
-GitHub environments `pypi` and `testpypi`, and require approval for `pypi`.
-
-Run the release workflow manually to publish a candidate to TestPyPI. For a
-production release, update the version in `build.zig.zon`, merge the change,
-and push its matching tag:
-
-```sh
-git tag v0.0.3
-git push origin v0.0.3
-```
-
-The workflow rejects tags that do not match the version and publishes through
-short-lived OpenID Connect credentials. No PyPI API token is required.
-
 ## Usage
 
 Compilation requires [Zig](https://ziglang.org/) ≥0.16.0 & a macOS, Linux, or
@@ -116,25 +35,6 @@ options:
 
 sRGB PNG, PNM/PAM, QOI, or Y4M input expected
 ```
-
-### Y4M color conversion
-
-Y4M metrics preserve range and chroma-location tags and reconstruct chroma with
-cubic interpolation. CVVDP receives float linear RGB directly, retaining source
-bit depth. The SDR defaults follow FFVship: limited range when unspecified,
-BT.709 above 650 lines, and BT.470 BG otherwise. Other image formats retain their
-existing color handling.
-
-Run the generated SD/HD Y4M regression fixtures with:
-
-```sh
-python3 tests/cli/test_y4m.py
-```
-
-The goldens come from FFVship at Vship commit
-`7dca6ea307fb84506980ac61e99030c1773aea5f`, using the local Metal backend.
-They cover centered and unspecified chroma, limited and full range, and 8/10-bit
-samples. No video downloads are needed.
 
 ## Credits
 

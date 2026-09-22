@@ -1,6 +1,6 @@
 .{
     .name = .fmetrics,
-    .version = "0.0.3",
+    .version = "0.1.0",
     .dependencies = .{
         .spng = .{
             .url = "git+https://github.com/allyourcodebase/libspng.git#8858232bde47083739c3e25f676093423610ec5e",
@@ -15,8 +15,8 @@
             .hash = "simpleimgio-0.0.0-oHTuOdP9AADo0x_m-pBpu0Fi6GnqgVvbN_l2Ul4HbViE",
         },
         .fcvvdp = .{
-            .url = "git+https://github.com/halidecx/fcvvdp.git#012f2243cf68ce5456705860a711db202fa5c63f",
-            .hash = "fcvvdp-0.3.3-DualWPL1BABTZLRqGdraqZ9abuGhSKWOIDJRfYs2TTXO",
+            .url = "git+https://github.com/halidecx/fcvvdp.git#98bd21a7a876be29ba06a29325b03624047ee850",
+            .hash = "fcvvdp-0.4.0-DualWPL1BAD7bF7Jair50v5Se-G-VluA9Y2FElmJZe2y",
         },
     },
     .fingerprint = 0xcc4003cccc882e16,

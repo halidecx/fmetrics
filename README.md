@@ -117,6 +117,25 @@ options:
 sRGB PNG, PNM/PAM, QOI, or Y4M input expected
 ```
 
+### Y4M color conversion
+
+Y4M metrics preserve range and chroma-location tags and reconstruct chroma with
+cubic interpolation. CVVDP receives float linear RGB directly, retaining source
+bit depth. The SDR defaults follow FFVship: limited range when unspecified,
+BT.709 above 650 lines, and BT.470 BG otherwise. Other image formats retain their
+existing color handling.
+
+Run the generated SD/HD Y4M regression fixtures with:
+
+```sh
+python3 tests/cli/test_y4m.py
+```
+
+The goldens come from FFVship at Vship commit
+`7dca6ea307fb84506980ac61e99030c1773aea5f`, using the local Metal backend.
+They cover centered and unspecified chroma, limited and full range, and 8/10-bit
+samples. No video downloads are needed.
+
 ## Credits
 
 fmetrics is under the [Apache 2.0 License](LICENSE). fmetrics is developed by

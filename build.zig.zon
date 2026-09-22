@@ -11,12 +11,12 @@
             .hash = "lcms2-2.18.0-CNsMs50PAAAbhEQvq2uI5_O2vqgvYXvcDKwFw8QbzKSk",
         },
         .simpleimgio = .{
-            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#95df1091d81c80ac54ff116a09fd1c4a061c3c6f",
+            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#6d9b55ead31a181f82595ffaed05986476510126",
             .hash = "simpleimgio-0.0.0-oHTuOdP9AADo0x_m-pBpu0Fi6GnqgVvbN_l2Ul4HbViE",
         },
         .fcvvdp = .{
-            .url = "git+https://github.com/halidecx/fcvvdp.git#9c5d6bdcb6e4e7c58343eacb8077b6a9e98a2059",
-            .hash = "fcvvdp-0.3.3-DualWKwMBQAy3ETDSCEMcdS0KVpTflPcTL7EPeyY9U6F",
+            .url = "git+https://github.com/halidecx/fcvvdp.git#012f2243cf68ce5456705860a711db202fa5c63f",
+            .hash = "fcvvdp-0.3.3-DualWPL1BABTZLRqGdraqZ9abuGhSKWOIDJRfYs2TTXO",
         },
     },
     .fingerprint = 0xcc4003cccc882e16,

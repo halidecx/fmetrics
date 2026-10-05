@@ -1,0 +1,36 @@
+; Windows module definition for the optional shared library (-Dshared=true).
+;
+; A DLL exports nothing by default, so every entry point declared in
+; fmetrics.h has to be named here or it stays private to the library and
+; GetProcAddress cannot find it. Keep this list in step with the public
+; declarations in fmetrics.h.
+;
+; fmetrics_workspace_reserve_data is intentionally absent: it is internal
+; plumbing, not part of the published ABI.
+;
+; This file is ignored on ELF and Mach-O, where symbols are exported by
+; default and listing them would only narrow visibility.
+
+EXPORTS
+    fmetrics_version_str
+    fmetrics_error_str
+
+    fmetrics_workspace_create
+    fmetrics_workspace_destroy
+
+    fmetrics_iwssim_cmp
+    fmetrics_msssim_cmp
+
+    fmetrics_ssimu2_cmp
+    fmetrics_ssimu2_cmp_map
+
+    fmetrics_butteraugli_cmp
+    fmetrics_butteraugli_cmp_map
+
+    fmetrics_cvvdp_create
+    fmetrics_cvvdp_destroy
+    fmetrics_cvvdp_process_frame
+    fmetrics_cvvdp_reset
+    fmetrics_cvvdp_cmp
+    fmetrics_cvvdp_get_display_params
+    fmetrics_cvvdp_version_str

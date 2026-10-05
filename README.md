@@ -7,14 +7,36 @@ documentation (library usage, speed testing, MOS correlation, etc).
 
 ## Usage
 
-Compilation requires [Zig](https://ziglang.org/) ≥0.16.0 & a macOS, Linux, or
-Unix-like operating system. To compile, run:
+Compilation requires [Zig](https://ziglang.org/) ≥0.16.0. macOS, Linux, and
+Windows are supported; Windows needs one extra step, described below. To
+compile, run:
 
 ```sh
 zig build --release=fast
 ```
 
 You may add `-Dflto=true` for FLTO, and `-Dstrip=true` to strip the binary.
+
+By default this builds the `fmetrics` binary and a static library. To also
+build an installable shared library, pass `-Dshared=true`:
+
+```sh
+zig build --release=fast -Dshared=true
+```
+
+On Windows, `fcvvdp` needs a small portability fix before the build will
+succeed. It is carried as a patch in [`patches/`](patches/):
+
+```sh
+zig build # populates zig-pkg/
+git apply --directory="zig-pkg/fcvvdp-<version>" \
+        patches/0001-windows-portability.patch
+zig build --release=fast -Dshared=true
+```
+
+`--directory` is needed because Zig extracts dependencies without their `.git`
+directory, so running `git apply` from inside `zig-pkg/fcvvdp-*/` reports
+`Skipped patch`.
 
 `fmetrics` binary usage:
 

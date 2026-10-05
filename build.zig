@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const strip = b.option(bool, "strip", "strip symbols from the binary, defaults to false") orelse false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
+    const shared = b.option(bool, "shared", "also build and install a shared library (.dll/.so/.dylib), defaults to false") orelse false;
     const options = b.addOptions();
     const zon = b.build_root.handle.readFileAlloc(
         b.graph.io,
@@ -163,6 +164,39 @@ pub fn build(b: *std.Build) void {
 
     // fmetrics.h
     lib.installHeader(b.path("src/fmetrics.h"), "fmetrics.h");
+
+    // 'libfmetrics' shared library, built only when -Dshared=true.
+    //
+    // The static library above is linked in whole rather than having its source
+    // list repeated, so the two cannot drift apart: the DLL is the same code,
+    // packaged for dynamic loading. Only the export list is platform-specific.
+    if (shared) {
+        const shared_lib = b.addLibrary(.{
+            .name = "fmetrics",
+            .linkage = .dynamic,
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+        });
+        shared_lib.root_module.linkLibrary(lib);
+        // Only Windows needs an explicit export list; a DLL there exports
+        // nothing by default. On ELF and Mach-O the symbols are already visible,
+        // and naming them would only narrow visibility.
+        if (target.result.os.tag == .windows) {
+            shared_lib.win32_module_definition = b.path("src/fmetrics.def");
+        }
+        // On Windows a DLL also produces an import library, installed as
+        // 'lib/<name>.lib' -- the same path the static library above already
+        // occupies, so the two would overwrite each other. The static library
+        // already serves every purpose the import library would here, so skip
+        // it and leave 'lib/fmetrics.lib' alone.
+        b.getInstallStep().dependOn(&b.addInstallArtifact(
+            shared_lib,
+            .{ .implib_dir = .disabled },
+        ).step);
+    }
 
     // 'fmetrics' executable
     const bin = b.addExecutable(.{

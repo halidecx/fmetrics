@@ -1,0 +1,5 @@
+# Patch files are data, not source: they are applied to files whose line
+# endings are decided by whoever fetched them. core.autocrlf would otherwise
+# rewrite them on checkout, and the rewritten patch no longer matches the
+# LF-terminated sources it is meant to apply to.
+*.patch -text

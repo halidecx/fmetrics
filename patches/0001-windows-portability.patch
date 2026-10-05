@@ -1,0 +1,55 @@
+diff --git a/src/cvvdp.c b/src/cvvdp.c
+index bcafd12..11d9319 100644
+--- a/src/cvvdp.c
++++ b/src/cvvdp.c
+@@ -26,6 +26,10 @@
+ #include <math.h>
+ #include <unistd.h>
+ 
++#ifdef _WIN32
++#include <windows.h>
++#endif
++
+ static const CvvdpSimdDispatch* g_cvvdp_dispatch = NULL;
+ static pthread_once_t g_cvvdp_dispatch_once = PTHREAD_ONCE_INIT;
+ 
+@@ -126,7 +130,11 @@ static void* cvvdp_thread_pool_worker(void* arg) {
+ }
+ 
+ static unsigned get_threadcnt(const unsigned threads) {
++#ifdef _WIN32
++    return threads ? threads : GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
++#else
+     return threads ? threads : (unsigned)sysconf(_SC_NPROCESSORS_ONLN);
++#endif
+ }
+ 
+ static CvvdpThreadPool* cvvdp_thread_pool_create(const unsigned total_threads) {
+@@ -1228,13 +1236,11 @@ static FcvvdpError cvvdp_process_pyramid_threaded(FcvvdpCtx* const c,
+     const int num_levels = c->num_bands;
+     CvvdpThreadPool* const pool = c->thread_pool;
+ 
+-    size_t total_size = 0;
+     int widths[CVVDP_MAX_LEVELS], heights[CVVDP_MAX_LEVELS];
+     int tw = w, th = h;
+     for (int lev = 0; lev < num_levels; lev++) {
+         widths[lev] = tw;
+         heights[lev] = th;
+-        total_size += (size_t)tw * th;
+         tw = (tw + 1) / 2;
+         th = (th + 1) / 2;
+     }
+@@ -1494,13 +1500,11 @@ static FcvvdpError cvvdp_process_pyramid_serial(FcvvdpCtx* const c,
+     const int w = c->width, h = c->height;
+     const int num_levels = c->num_bands;
+ 
+-    size_t total_size = 0;
+     int widths[CVVDP_MAX_LEVELS], heights[CVVDP_MAX_LEVELS];
+     int tw = w, th = h;
+     for (int lev = 0; lev < num_levels; lev++) {
+         widths[lev] = tw;
+         heights[lev] = th;
+-        total_size += (size_t)tw * th;
+         tw = (tw + 1) / 2;
+         th = (th + 1) / 2;
+     }

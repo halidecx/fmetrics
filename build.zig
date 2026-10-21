@@ -19,6 +19,11 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const strip = b.option(bool, "strip", "strip symbols from the binary, defaults to false") orelse false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
+    if (flto and target.result.ofmt != .elf) {
+        const unsupported = b.addFail("Zig 0.17 LTO requires an ELF target; omit -Dflto=true on macOS");
+        b.default_step.dependOn(&unsupported.step);
+        return;
+    }
     const options = b.addOptions();
     options.addOption([]const u8, "version", @import("build.zig.zon").version);
 

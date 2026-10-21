@@ -7,7 +7,7 @@ documentation (library usage, speed testing, MOS correlation, etc).
 
 ## Usage
 
-Compilation requires [Zig](https://ziglang.org/) ≥0.16.0 & a macOS, Linux, or
+Compilation requires [Zig](https://ziglang.org/) ≥0.17.0 & a macOS, Linux, or
 Unix-like operating system. To compile, run:
 
 ```sh

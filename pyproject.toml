@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel>=0.45", "ziglang==0.16.0"]
+requires = ["setuptools>=77", "wheel>=0.45", "ziglang==0.17.0"]
 build-backend = "setuptools.build_meta"
 
 [project]

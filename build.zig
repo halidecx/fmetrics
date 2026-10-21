@@ -20,19 +20,7 @@ pub fn build(b: *std.Build) void {
     const strip = b.option(bool, "strip", "strip symbols from the binary, defaults to false") orelse false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
     const options = b.addOptions();
-    const zon = b.build_root.handle.readFileAlloc(
-        b.graph.io,
-        "build.zig.zon",
-        b.allocator,
-        .limited(1 << 20),
-    ) catch @panic("failed to read build.zig.zon");
-    const marker = ".version = \"";
-    const start = std.mem.indexOf(u8, zon, marker) orelse
-        @panic("missing version");
-    const value = zon[start + marker.len ..];
-    const end = std.mem.indexOfScalar(u8, value, '"') orelse
-        @panic("invalid version");
-    options.addOption([]const u8, "version", value[0..end]);
+    options.addOption([]const u8, "version", @import("build.zig.zon").version);
 
     // simpleimgio
     const simpleimgio_dep = b.dependency("simpleimgio", .{
@@ -83,6 +71,7 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(b.path("."));
     translate_c.addIncludePath(spng.getEmittedIncludeTree());
     const c_module = translate_c.createModule();
+    fmetrics_module.addImport("c", c_module);
 
     // 'libfmetrics.a' static lib
     const lib = b.addLibrary(.{
@@ -99,6 +88,7 @@ pub fn build(b: *std.Build) void {
     lib.root_module.pic = true;
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
+        "src/ssimulacra2/ssimulacra2.c",
         "src/fmetrics_cvvdp.c",
         "src/iwssim/iwssim.c",
         "src/msssim/msssim.c",
@@ -128,10 +118,10 @@ pub fn build(b: *std.Build) void {
     if (target.result.cpu.arch == .x86_64) {
         var avx_query = target.query;
         avx_query.cpu_features_add.addFeature(
-            @intFromEnum(std.Target.x86.Feature.avx2),
+            @backingInt(std.Target.x86.Feature.avx2),
         );
         avx_query.cpu_features_add.addFeature(
-            @intFromEnum(std.Target.x86.Feature.fma),
+            @backingInt(std.Target.x86.Feature.fma),
         );
         const avx = b.addObject(.{
             .name = "cvvdp_avx2",
@@ -186,4 +176,23 @@ pub fn build(b: *std.Build) void {
     bin.root_module.linkLibrary(lib);
     bin.root_module.linkLibrary(spng);
     b.installArtifact(bin);
+    const tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/ssimulacra2.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .use_llvm = true,
+    });
+    tests.root_module.addImport("fmetrics", fmetrics_module);
+    tests.root_module.addImport("legacy_ssimu2", b.createModule(.{
+        .root_source_file = b.path("tests/reference/ssimulacra2.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    tests.root_module.linkLibrary(lib);
+    b.step("test", "Check streamed SSIMULACRA2 against the reference").dependOn(
+        &b.addRunArtifact(tests).step,
+    );
 }

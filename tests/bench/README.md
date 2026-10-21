@@ -99,3 +99,47 @@ Run the same command with the baseline executable to compare paired predictions.
 
 Each coefficient changes by less than 0.0002. These measurements cover CID22;
 correlation on other subjective datasets has not been measured.
+
+## Video clip comparison
+
+Install this checkout's Python bindings and NumPy into the Python environment
+that has VapourSynth installed:
+
+```sh
+python3 -m pip install . numpy
+python3 -m pip install vapoursynth-vszip==23.0.0
+python3 tests/bench/compare_video.py reference.mkv distorted.mkv \
+    --threads 16 --runs 3 --csv scores.csv
+```
+
+FFMS2 is the default decoder; its VapourSynth plugin must be installed.
+`--source bestsource` uses `core.bs.VideoSource` instead. Plugins outside the
+autoload path can be supplied with repeated `--load-plugin /path/to/plugin`
+arguments. The script also finds the plugin in an installed `vapoursynth-vszip`
+wheel when autoloading is unavailable. It prints the loaded plugin version and
+path.
+
+Both metrics receive identical float linear RGB frames. YUV is converted with
+VapourSynth's Bicubic resizer, using frame color metadata and `--matrix 709` as
+the matrix fallback. RGB samples are clamped to [0, 1] before linearization.
+This comparison targets SDR video. `--range limited` or `--range full` overrides
+the input range; the default uses source metadata. No frame resizing occurs.
+
+The CSV records both scores and their signed delta for every frame. The summary
+includes means, mean absolute delta, largest absolute delta, and median
+throughput. Timing includes decoding, shared RGB preprocessing, and the Python
+packing needed by the fmetrics bindings. It is a video-pipeline comparison;
+use the C harness above for direct filter throughput. Metric output caches are
+disabled, each pass warms up three frames, and pass order alternates between
+runs. Decoder and operating-system caches can still affect timing.
+
+To sample 100 frames starting at frame 50, every fifth frame:
+
+```sh
+python3 tests/bench/compare_video.py reference.mkv distorted.mkv \
+    --start 50 --frames 100 --step 5 --csv sample.csv
+```
+
+`--frames` counts sampled frames. `--dist-start` selects a different starting
+frame in the distorted clip when alignment requires it. Dimensions and frame
+rates must match. Different lengths require an explicit common `--frames` span.

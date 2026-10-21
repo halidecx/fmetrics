@@ -1,3 +1,16 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "image-fmetrics",
+#     "numpy",
+#     "vapoursynth>=77",
+#     "vapoursynth-vszip==23.0.0",
+# ]
+# [tool.uv.sources]
+# image-fmetrics = { path = "../.." }
+# ///
+
 import argparse
 import csv
 from importlib import metadata
@@ -51,8 +64,8 @@ def main():
         import vapoursynth as vs
     except ImportError as error:
         raise RuntimeError(
-            f"{error}. Install this checkout with 'python -m pip install . numpy' "
-            "and install VapourSynth plus its vszip/source plugins."
+            f"{error}. Run this script with uv and install the VapourSynth "
+            "runtime plus a source plugin."
         ) from error
 
     core = vs.core

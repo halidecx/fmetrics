@@ -102,16 +102,15 @@ correlation on other subjective datasets has not been measured.
 
 ## Video clip comparison
 
-Install this checkout's Python bindings and NumPy into the Python environment
-that has VapourSynth installed:
+The executable script uses uv inline metadata to install its Python
+dependencies, including vszip 23.0.0 and fmetrics built from this checkout:
 
 ```sh
-python3 -m pip install . numpy
-python3 -m pip install vapoursynth-vszip==23.0.0
-python3 tests/bench/compare_video.py reference.mkv distorted.mkv \
+./tests/bench/compare_video.py reference.mkv distorted.mkv \
     --threads 16 --runs 3 --csv scores.csv
 ```
 
+Install uv, the VapourSynth system runtime, and a source plugin separately.
 FFMS2 is the default decoder; its VapourSynth plugin must be installed.
 `--source bestsource` uses `core.bs.VideoSource` instead. Plugins outside the
 autoload path can be supplied with repeated `--load-plugin /path/to/plugin`
@@ -136,7 +135,7 @@ runs. Decoder and operating-system caches can still affect timing.
 To sample 100 frames starting at frame 50, every fifth frame:
 
 ```sh
-python3 tests/bench/compare_video.py reference.mkv distorted.mkv \
+./tests/bench/compare_video.py reference.mkv distorted.mkv \
     --start 50 --frames 100 --step 5 --csv sample.csv
 ```
 

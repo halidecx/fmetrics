@@ -1,11 +1,9 @@
 # SSIMULACRA2 validation
 
-The production implementation is C with compiler vectorization. The old Zig
-implementation is preserved in `tests/reference` for differential tests:
+The production implementation is C with compiler vectorization.
 
 ```sh
 zig build --release=fast
-zig build test --release=fast
 ```
 
 Each active scale consumes linear RGB rows, sends 2x2 averages to the next

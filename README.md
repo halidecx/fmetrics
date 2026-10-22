@@ -17,7 +17,6 @@ zig build --release=fast
 You may add `-Dflto=true` for FLTO on ELF targets, and `-Dstrip=true` to strip
 the binary. Zig 0.17 does not support this LTO build on macOS.
 
-Run `zig build test --release=fast` for SSIMULACRA2 reference comparisons.
 See [the benchmark notes](tests/bench/README.md) for performance and CID22
 correlation results.
 

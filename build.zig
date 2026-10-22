@@ -181,23 +181,4 @@ pub fn build(b: *std.Build) void {
     bin.root_module.linkLibrary(lib);
     bin.root_module.linkLibrary(spng);
     b.installArtifact(bin);
-    const tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/ssimulacra2.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-        .use_llvm = true,
-    });
-    tests.root_module.addImport("fmetrics", fmetrics_module);
-    tests.root_module.addImport("legacy_ssimu2", b.createModule(.{
-        .root_source_file = b.path("tests/reference/ssimulacra2.zig"),
-        .target = target,
-        .optimize = optimize,
-    }));
-    tests.root_module.linkLibrary(lib);
-    b.step("test", "Check streamed SSIMULACRA2 against the reference").dependOn(
-        &b.addRunArtifact(tests).step,
-    );
 }

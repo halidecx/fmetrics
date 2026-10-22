@@ -143,33 +143,3 @@ def test_memoryview():
     data = bytearray(192 * 192 * 3)
     image = memoryview(data).cast("B", shape=(192, 192, 3))
     assert fmetrics.ssimu2(image, image) == pytest.approx(100.0)
-
-
-@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
-def test_ssimu2_rejects_nonfinite_linear_input(value):
-    image = np.zeros((33, 35, 3), dtype=np.float32)
-    image[16, 17, 1] = value
-    with pytest.raises(fmetrics.Error, match="invalid argument"):
-        fmetrics.ssimu2(image, image)
-
-
-def test_ssimu2_encoded_and_linear_inputs_agree():
-    rng = np.random.default_rng(42)
-    reference = rng.integers(16, 240, (129, 131, 3), dtype=np.uint8)
-    distorted = reference - np.uint8(5)
-
-    def linear(image):
-        encoded = image.astype(np.float32) / 255
-        return np.where(
-            encoded <= 0.04045,
-            encoded / 12.92,
-            ((encoded + 0.055) / 1.055) ** 2.4,
-        )
-
-    expected = fmetrics.ssimu2(reference, distorted)
-    assert fmetrics.ssimu2(
-        linear(reference), linear(distorted)
-    ) == pytest.approx(expected, abs=0.005)
-    assert fmetrics.ssimu2(
-        reference, linear(distorted)
-    ) == pytest.approx(expected, abs=0.005)

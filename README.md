@@ -7,14 +7,18 @@ documentation (library usage, speed testing, MOS correlation, etc).
 
 ## Usage
 
-Compilation requires [Zig](https://ziglang.org/) ≥0.16.0 & a macOS, Linux, or
+Compilation requires [Zig](https://ziglang.org/) ≥0.17.0 & a macOS, Linux, or
 Unix-like operating system. To compile, run:
 
 ```sh
 zig build --release=fast
 ```
 
-You may add `-Dflto=true` for FLTO, and `-Dstrip=true` to strip the binary.
+You may add `-Dflto=true` for FLTO on ELF targets, and `-Dstrip=true` to strip
+the binary. Zig 0.17 does not support this LTO build on macOS.
+
+See [the benchmark notes](tests/bench/README.md) for performance and CID22
+correlation results.
 
 `fmetrics` binary usage:
 

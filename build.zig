@@ -19,20 +19,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const strip = b.option(bool, "strip", "strip symbols from the binary, defaults to false") orelse false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
+    if (flto and target.result.ofmt != .elf) {
+        const unsupported = b.addFail("Zig 0.17 LTO requires an ELF target; omit -Dflto=true on macOS");
+        b.default_step.dependOn(&unsupported.step);
+        return;
+    }
     const options = b.addOptions();
-    const zon = b.build_root.handle.readFileAlloc(
-        b.graph.io,
-        "build.zig.zon",
-        b.allocator,
-        .limited(1 << 20),
-    ) catch @panic("failed to read build.zig.zon");
-    const marker = ".version = \"";
-    const start = std.mem.indexOf(u8, zon, marker) orelse
-        @panic("missing version");
-    const value = zon[start + marker.len ..];
-    const end = std.mem.indexOfScalar(u8, value, '"') orelse
-        @panic("invalid version");
-    options.addOption([]const u8, "version", value[0..end]);
+    options.addOption([]const u8, "version", @import("build.zig.zon").version);
 
     // simpleimgio
     const simpleimgio_dep = b.dependency("simpleimgio", .{
@@ -83,6 +76,7 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(b.path("."));
     translate_c.addIncludePath(spng.getEmittedIncludeTree());
     const c_module = translate_c.createModule();
+    fmetrics_module.addImport("c", c_module);
 
     // 'libfmetrics.a' static lib
     const lib = b.addLibrary(.{
@@ -99,6 +93,7 @@ pub fn build(b: *std.Build) void {
     lib.root_module.pic = true;
     const lib_sources = [_][]const u8{
         "src/fmetrics.c",
+        "src/ssimulacra2/ssimulacra2.c",
         "src/fmetrics_cvvdp.c",
         "src/iwssim/iwssim.c",
         "src/msssim/msssim.c",
@@ -128,10 +123,10 @@ pub fn build(b: *std.Build) void {
     if (target.result.cpu.arch == .x86_64) {
         var avx_query = target.query;
         avx_query.cpu_features_add.addFeature(
-            @intFromEnum(std.Target.x86.Feature.avx2),
+            @backingInt(std.Target.x86.Feature.avx2),
         );
         avx_query.cpu_features_add.addFeature(
-            @intFromEnum(std.Target.x86.Feature.fma),
+            @backingInt(std.Target.x86.Feature.fma),
         );
         const avx = b.addObject(.{
             .name = "cvvdp_avx2",

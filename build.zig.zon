@@ -3,24 +3,24 @@
     .version = "0.1.0",
     .dependencies = .{
         .spng = .{
-            .url = "git+https://github.com/allyourcodebase/libspng.git#8858232bde47083739c3e25f676093423610ec5e",
-            .hash = "spng-0.0.1-T166cP8UAABcBGTOPKx7kUUyHEcu0eDvN8LnSIj3S_cW",
+            .url = "git+https://github.com/gianni-rosato/libspng.git?ref=main#bbd630d686262a56086bf8e9eddb8c4004f51c0c",
+            .hash = "spng-0.0.2-T166cHISAADR33WgZ6IfHBVOPj0gwjyqnxYxc-XTWF8Z",
         },
         .lcms2 = .{
             .url = "git+https://github.com/allyourcodebase/lcms2.git#66c7c0ef0a9bd29a5f78aeff797bf541d0b91624",
             .hash = "lcms2-2.18.0-CNsMs50PAAAbhEQvq2uI5_O2vqgvYXvcDKwFw8QbzKSk",
         },
         .simpleimgio = .{
-            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#6d9b55ead31a181f82595ffaed05986476510126",
-            .hash = "simpleimgio-0.0.0-oHTuOdP9AADo0x_m-pBpu0Fi6GnqgVvbN_l2Ul4HbViE",
+            .url = "git+https://github.com/gianni-rosato/simpleimgio.git#98473d19f243eefd4ef29a2149af47bc072c2484",
+            .hash = "simpleimgio-0.0.1-oHTuOfMbAQBWcIe2wQBOoIIrItr8a-kBVowFbAaZkwXy",
         },
         .fcvvdp = .{
-            .url = "git+https://github.com/halidecx/fcvvdp.git#98bd21a7a876be29ba06a29325b03624047ee850",
-            .hash = "fcvvdp-0.4.0-DualWPL1BAD7bF7Jair50v5Se-G-VluA9Y2FElmJZe2y",
+            .url = "git+https://github.com/halidecx/fcvvdp.git#ab4d41df02138f5573c08e05e8e33c8ef397e613",
+            .hash = "fcvvdp-0.4.1-DualWIn4BAD_tcJHKx8OI1FWnSFpfeIm6dljEQHaYIFU",
         },
     },
     .fingerprint = 0xcc4003cccc882e16,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",

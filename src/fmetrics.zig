@@ -14,9 +14,7 @@
 // limitations under the License.
 const std = @import("std");
 const build_opts = @import("build_opts");
-const c = @cImport({
-    @cInclude("fmetrics.h");
-});
+const c = @import("c");
 
 pub const version = build_opts.version;
 
